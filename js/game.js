@@ -638,6 +638,7 @@ function handleContinueClick(e) {
   });
   solved = false;
   hintStep = 0; // 새 진명이 시작되는 지점이므로 여기서만 리셋한다.
+  logEl.innerHTML = ""; // 힌트/오답 로그도 새 진명 시작 시 초기화 — 계속 쌓이면 스크롤 압박이 생김.
   loadNextRiddle();
 }
 

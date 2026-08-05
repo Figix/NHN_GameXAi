@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>신의 언어 (가제) — 레이아웃 뼈대</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="intro-overlay">
+  <div id="intro-lines"></div>
+</div>
+
+<div id="app">
+  <aside id="info-panel">
+    <section id="riddle-box">
+      <p class="label">신은 말한다</p>
+      <p id="riddle-text">시간을 / 노래하는 / 마지막 / 심장</p>
+    </section>
+    <div id="log"></div>
+  </aside>
+
+  <main id="scene-view">
+    <nav id="place-switcher"></nav>
+    <nav id="scene-switcher"></nav>
+    <div id="scene-frame">
+      <div id="scene-bg"></div>
+      <div id="dim-overlay"></div>
+      <p id="continue-prompt">( 클릭하여 다음으로 )</p>
+      <div id="place-transition"></div>
+    </div>
+  </main>
+
+  <button id="panel-toggle" type="button">▲ 신의 말</button>
+</div>
+<script src="js/intro.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

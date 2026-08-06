@@ -155,17 +155,78 @@ function nextObjectName() {
   return riddleQueue.pop();
 }
 
+// 세션 리듬 — 파도(Wave) 시스템. 80개를 한 세션에서 쭉 풀면 8~10문제부터 루프가
+// 다 읽혀서 물리는 문제를, 하루 제한 대신 세션 내부에 주기적인 변주를 줘서 완화한다.
+// 규칙은 docs/02_게임플레이_흐름.md "12-1. 세션 리듬 — 파도 시스템" 참고. 사물 80개의
+// 무작위 순환(riddleQueue)과는 완전히 별개의 카운터로 돈다 — 맞물릴 필요 없음.
+const WAVE_CYCLE = [
+  { type: "baseline", length: 5 },
+  { type: "reverse", length: 3 },
+  { type: "decoy", length: 3 },
+];
+const WAVE_CYCLE_TOTAL = WAVE_CYCLE.reduce((sum, wave) => sum + wave.length, 0);
+
+function waveTypeForIndex(index) {
+  const pos = index % WAVE_CYCLE_TOTAL;
+  let acc = 0;
+  for (const wave of WAVE_CYCLE) {
+    acc += wave.length;
+    if (pos < acc) return wave.type;
+  }
+  return "baseline"; // 도달할 일 없음(방어용)
+}
+
+// 디코이 파도에서, 아직 안 나온 사물 중 previousAnswer와 같은 View에 함께 배치된
+// 것을 큐에서 찾아 그 인덱스를 반환한다. candidateScenesFor()는 아래에서 정의되지만
+// 함수 선언은 호이스팅되므로 여기서 먼저 참조해도 문제없다.
+function findCoLocatedQueueIndex(previousAnswer) {
+  const previousScenes = candidateScenesFor(previousAnswer);
+  for (let i = riddleQueue.length - 1; i >= 0; i--) {
+    const candidateScenes = candidateScenesFor(riddleQueue[i]);
+    if (candidateScenes.some((id) => previousScenes.includes(id))) return i;
+  }
+  return -1;
+}
+
+function pickNextObjectName(previousAnswer) {
+  if (currentWaveType === "decoy" && previousAnswer) {
+    const decoyIndex = findCoLocatedQueueIndex(previousAnswer);
+    if (decoyIndex !== -1) return riddleQueue.splice(decoyIndex, 1)[0];
+  }
+  return nextObjectName();
+}
+
 // 현재 진행 중인 진명 상태 — loadNextRiddle()이 매번 갱신한다.
 let currentAnswerObject = null;
 let currentHints = [];
 let currentReveal = "";
+// 화면에 뭐가 먼저 보이든(정방향/역방향) 실제 진명 문장은 항상 여기 보관한다 —
+// 역방향 파도에서 정답을 맞힌 뒤 사후 공개할 때 씀.
+let currentRiddleText = "";
+let waveQuestionIndex = -1; // loadNextRiddle 최초 호출에서 0부터 시작하도록 -1에서 출발
+let currentWaveType = "baseline";
 
 function loadNextRiddle() {
-  currentAnswerObject = nextObjectName();
+  waveQuestionIndex++;
+  currentWaveType = waveTypeForIndex(waveQuestionIndex);
+
+  const previousAnswer = currentAnswerObject;
+  currentAnswerObject = pickNextObjectName(previousAnswer);
+
   const d = TRUENAME_DATA[currentAnswerObject];
   currentHints = d.hints;
   currentReveal = d.reveal;
-  document.getElementById("riddle-text").textContent = d.riddle;
+  currentRiddleText = d.riddle;
+
+  if (currentWaveType === "reverse") {
+    // 역방향 파도: 진명 대신 Hint_Level1을 먼저 보여준다. 첫 힌트는 이미 공개된
+    // 상태로 시작하므로, 오답 시 hints[1]부터 이어서 공개되게 hintStep을 1로 둔다.
+    document.getElementById("riddle-text").textContent = currentHints[0];
+    hintStep = 1;
+  } else {
+    document.getElementById("riddle-text").textContent = currentRiddleText;
+    hintStep = 0;
+  }
 }
 
 // docs/hotspot_color_map.csv 그대로 — hex(대문자) -> 사물명. 컬러 마스크 클릭 판정에 쓴다.
@@ -288,8 +349,9 @@ function loadAtlasMaskCtx() {
 }
 
 // 이 View의 셀 영역(sumX/sumY 계산은 셀 내부 상대좌표 기준)에서 사물별 중심 좌표(centroid,
-// 셀 대비 %)를 계산해둔다. 클릭한 정확한 픽셀이 아니라 사물의 "중심"에 정답/오답 강조
-// 효과를 주기 위함이다.
+// 셀 대비 %)를 계산해둔다. 정답/오답 시 사물 위에 마커를 띄우던 용도로 만들었으나 그
+// 연출은 제거했다 — 지금은 안 쓰이지만, 나중에 진명 기록(도감) 표시 위치 등에 재사용할
+// 수 있어 계산만 남겨둔다(04_진행시스템.md 참고).
 function loadMask(scene) {
   if (scene.maskPromise) return scene.maskPromise;
   if (location.protocol === "file:") {
@@ -367,16 +429,13 @@ function resolveMaskClick(scene, clientX, clientY) {
   return HOTSPOT_COLORS[hex] || null;
 }
 
-// 클릭 즉시 handleClick()이 correct/wrong-flash 클래스를 붙이므로, 이 dot이 "아무 상태도
-// 없는 기본 hotspot"으로 화면에 그려지는 프레임은 없다 (동기 실행이라 페인트 전에 처리됨).
-function makeTransientDot(scene, name) {
-  const centroid = scene.centroids[name] || { xPercent: 50, yPercent: 50 };
+// 정답/오답 시 사물 위에 원형 마커를 띄우던 방식은 사물을 가려서 제거했다 — 이제
+// 피드백은 화면 흔들림(오답)·암전+Revelation(정답)만으로 전달한다([03_판정_연출_시스템.md]
+// 참고). 이 함수는 DOM에 아무것도 그리지 않는 "가짜" dot만 만들어 handleClick()의
+// dataset.transient 판별 로직과 인터페이스를 그대로 맞춰준다.
+function makeTransientDot() {
   const dot = document.createElement("div");
-  dot.className = "hotspot";
   dot.dataset.transient = "true";
-  dot.style.left = centroid.xPercent + "%";
-  dot.style.top = centroid.yPercent + "%";
-  sceneFrame.appendChild(dot);
   return dot;
 }
 
@@ -459,6 +518,21 @@ function appendLog(text, className) {
   logEl.appendChild(p);
   // 실제 스크롤 컨테이너는 #log가 아니라 #info-panel이라 scrollIntoView로 맞춘다.
   p.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+// 위치 안내(Case B)나 힌트 소진 메시지처럼, 같은 상황이 유지되는 동안 오답을 낼 때마다
+// 그대로 반복되는 문구가 있다. 그럴 때마다 새 줄을 쌓으면 로그가 계속 길어지고 스크롤이
+// 생기므로, 로그의 마지막 줄과 내용이 같으면 새로 추가하지 않고 그 줄을 0.2초 흔들어
+// 다시 눈에 띄게만 한다. 내용이 다르면(예: 힌트 단계가 올라감) 평소처럼 새 줄을 추가한다.
+function appendOrEmphasizeLog(text, className) {
+  const lastP = logEl.lastElementChild;
+  if (lastP && lastP.textContent === text) {
+    lastP.classList.remove("emphasize");
+    void lastP.offsetWidth; // reflow로 애니메이션 재시작
+    lastP.classList.add("emphasize");
+    return;
+  }
+  appendLog(text, className);
 }
 
 function buildPlaceSwitcher() {
@@ -577,6 +651,11 @@ function handleClick(hotspot, dotEl) {
     dotEl.classList.add("correct");
     dimOverlay.classList.add("active");
     appendLog(currentReveal, "reveal");
+    if (currentWaveType === "reverse") {
+      // 역방향 파도 — 정답을 먼저 확인시키고, 그 사물의 원래 진명(리들)을
+      // 뒤늦게 공개한다("찾고 나서야 뜻을 알게 되는" 여운).
+      setTimeout(() => appendLog(currentRiddleText, "echo"), 600);
+    }
     // 해설이 다 나오고(로그 페이드인 0.4s) 약 1초 뒤에 "클릭하여 계속" 안내를 띄운다.
     setTimeout(showContinuePrompt, 1400);
     return;
@@ -595,10 +674,10 @@ function handleClick(hotspot, dotEl) {
   if (candidates.includes(currentSceneId)) {
     // Case A: 정답 사물이 바로 이 View 안에 있음 → Hint 단계적 공개
     if (hintStep < currentHints.length) {
-      appendLog(currentHints[hintStep], "hint");
+      appendLog(currentHints[hintStep], "hint"); // 단계마다 내용이 달라지므로 항상 새 줄
       hintStep++;
     } else {
-      appendLog(DEMO_HINTS_EXHAUSTED, "hint");
+      appendOrEmphasizeLog(DEMO_HINTS_EXHAUSTED, "hint"); // 힌트 소진 후엔 매번 같은 문구라 반복 시 강조만
     }
     return;
   }
@@ -608,9 +687,10 @@ function handleClick(hotspot, dotEl) {
   );
 
   if (samePlaceCandidates.length > 0) {
-    // Case B-2: 같은 장소 안에 후보 View가 있음 → 안 가본 곳 우선으로 그 View를 안내
+    // Case B-2: 같은 장소 안에 후보 View가 있음 → 안 가본 곳 우선으로 그 View를 안내.
+    // 안내 대상이 바뀌지 않는 한 오답마다 같은 문구가 반복되므로 강조만 한다.
     const targetSceneId = pickPreferUnvisited(samePlaceCandidates);
-    appendLog(caseB2Message(DEMO_SCENES[targetSceneId].label), "guide");
+    appendOrEmphasizeLog(caseB2Message(DEMO_SCENES[targetSceneId].label), "guide");
   } else {
     // Case B-1: 이 장소엔 후보가 하나도 없음 → 후보가 있는 장소 중 안 가본 곳 우선으로 안내
     const candidatePlaceIds = [...new Set(candidates.map((id) => DEMO_SCENES[id].place))];
@@ -618,7 +698,7 @@ function handleClick(hotspot, dotEl) {
       candidates.some((id) => DEMO_SCENES[id].place === placeId && !visitedScenes.has(id))
     );
     const targetPlaceId = (placesWithUnvisited.length ? placesWithUnvisited : candidatePlaceIds)[0];
-    appendLog(caseB1Message(DEMO_PLACES[targetPlaceId].label), "guide");
+    appendOrEmphasizeLog(caseB1Message(DEMO_PLACES[targetPlaceId].label), "guide");
   }
 }
 
@@ -637,7 +717,8 @@ function handleContinueClick(e) {
     else el.classList.remove("correct");
   });
   solved = false;
-  hintStep = 0; // 새 진명이 시작되는 지점이므로 여기서만 리셋한다.
+  // hintStep은 loadNextRiddle() 안에서 파도 종류에 맞게 설정한다(평상시 0, 역방향 1) —
+  // 새 진명이 시작되는 지점이므로 리셋도 거기서만 일어난다.
   logEl.innerHTML = ""; // 힌트/오답 로그도 새 진명 시작 시 초기화 — 계속 쌓이면 스크롤 압박이 생김.
   loadNextRiddle();
 }
@@ -659,7 +740,7 @@ sceneFrame.addEventListener("click", (e) => {
   if (scene.realAssets && scene.atlasCtx) {
     const matchedName = resolveMaskClick(scene, e.clientX, e.clientY);
     if (matchedName) {
-      handleClick({ name: matchedName }, makeTransientDot(scene, matchedName));
+      handleClick({ name: matchedName }, makeTransientDot());
       return;
     }
     // 검정(빈 공간) 클릭이면 아래 리플 처리로 그대로 넘어간다.
@@ -685,9 +766,11 @@ loadNextRiddle();
 renderPlace("library"); // 인트로 뒤에 가려진 채로 미리 준비해둔다.
 
 // ---------- 인트로: 신의 프롤로그 ----------
-// 한 문장씩, 문장 길이에 비례한 "읽기 편한 속도"로 순차 노출한다.
-// 마지막 문장 이후 안내 문구를 띄우고, 플레이어가 누르면 오버레이가 왼쪽으로
-// 밀려나가며 사라지고, 그 이동이 끝난 뒤에야 SceneView가 페이드인한다.
+// 한 문장씩, 문장 길이에 비례한 "읽기 편한 속도"로 순차 노출한다. 기다리는 게
+// 답답하다는 피드백을 반영해, 문장이 나온 뒤 자동 대기 중에 클릭하면 그 대기를
+// 건너뛰고 바로 다음 문장으로 넘어간다(예정된 딜레이는 취소). 마지막 문장 이후엔
+// 안내 문구를 띄우고, 플레이어가 누르면 오버레이가 왼쪽으로 밀려나가며 사라지고,
+// 그 이동이 끝난 뒤에야 SceneView가 페이드인한다.
 
 const introOverlay = document.getElementById("intro-overlay");
 const introLinesEl = document.getElementById("intro-lines");
@@ -696,17 +779,33 @@ function readingDelay(text) {
   return Math.min(3200, Math.max(1100, text.length * 90));
 }
 
-function playIntroLine(index) {
-  if (index >= INTRO_LINES.length) {
-    showIntroContinue();
+let introIndex = 0;
+let introTimeoutId = null;
+let introFinished = false; // true가 되면 클릭은 스킵이 아니라 exitIntro()가 처리한다.
+
+function showNextIntroLine() {
+  if (introIndex >= INTRO_LINES.length) {
+    if (!introFinished) {
+      introFinished = true;
+      showIntroContinue();
+    }
     return;
   }
+  const text = INTRO_LINES[introIndex];
+  introIndex++;
   const p = document.createElement("p");
-  p.textContent = INTRO_LINES[index];
+  p.textContent = text;
   introLinesEl.appendChild(p);
   p.scrollIntoView({ behavior: "smooth", block: "end" });
-  setTimeout(() => playIntroLine(index + 1), readingDelay(INTRO_LINES[index]));
+  introTimeoutId = setTimeout(showNextIntroLine, readingDelay(text));
 }
+
+// 자동 대기 중 클릭하면 남은 대기를 취소하고 바로 다음 문장을 보여준다.
+introOverlay.addEventListener("click", () => {
+  if (introFinished) return; // 마지막 문장 이후엔 showIntroContinue()의 exitIntro 리스너가 처리
+  clearTimeout(introTimeoutId);
+  showNextIntroLine();
+});
 
 function showIntroContinue() {
   const prompt = document.createElement("p");
@@ -730,4 +829,4 @@ introOverlay.addEventListener("transitionend", (e) => {
   }
 });
 
-playIntroLine(0);
+showNextIntroLine();

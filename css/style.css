@@ -99,10 +99,23 @@ html, body {
 #log p.hint { color: var(--ink); }
 #log p.reveal { color: var(--accent); }
 #log p.guide { color: #9db4c9; font-style: italic; }
+#log p.echo { color: var(--accent); font-style: italic; opacity: 0.85; }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 같은 위치 안내/힌트 소진 문구가 반복될 때 새 줄 대신 기존 줄을 짧게 흔들어 강조한다
+   (appendOrEmphasizeLog 참고) — 로그가 계속 쌓여 스크롤이 생기는 것을 막기 위함. */
+#log p.emphasize {
+  animation: log-emphasize 0.2s ease;
+}
+
+@keyframes log-emphasize {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-5px); }
+  70% { transform: translateX(5px); }
 }
 
 /* ---------- 우측: 시점(View) ---------- */

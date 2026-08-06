@@ -144,7 +144,7 @@ const TRUENAME_DATA = {
 // 80개를 한 번씩 다 돌고 나서야 다시 섞는다(매번 순수 랜덤이면 방금 나온 게 바로 또
 // 나올 수 있음 — "80가지를 골고루 돈다"는 느낌을 위해 섞은 큐를 다 비울 때까지 유지).
 let riddleQueue = [];
-function nextObjectName() {
+function ensureRiddleQueue() {
   if (riddleQueue.length === 0) {
     riddleQueue = Object.keys(TRUENAME_DATA);
     for (let i = riddleQueue.length - 1; i > 0; i--) {
@@ -152,6 +152,9 @@ function nextObjectName() {
       [riddleQueue[i], riddleQueue[j]] = [riddleQueue[j], riddleQueue[i]];
     }
   }
+}
+function nextObjectName() {
+  ensureRiddleQueue();
   return riddleQueue.pop();
 }
 
@@ -188,7 +191,37 @@ function findCoLocatedQueueIndex(previousAnswer) {
   return -1;
 }
 
+// 첫 진명(waveQuestionIndex === 0) 전용 사물 선정 — 장소 이동과 그 장소 안에서의 View
+// 이동을 둘 다 반드시 겪어야 찾아지는 사물을 골라서, 어느 세션에서든 튜토리얼 UX(장소
+// 이동 + 사물 가리키기)가 확실히 재생되게 한다. docs/03_판정_연출_시스템.md "첫 진명
+// 튜토리얼" 참고.
+function defaultSceneIdForPlace(placeId) {
+  return Object.keys(DEMO_SCENES).find((id) => DEMO_SCENES[id].place === placeId);
+}
+function qualifiesForTutorial(name) {
+  const scenes = candidateScenesFor(name);
+  if (scenes.length === 0) return false;
+  return scenes.every((id) => {
+    const place = DEMO_SCENES[id].place;
+    // library면 애초에 장소 이동이 필요 없고, 그 장소의 기본(첫) View면 장소만
+    // 옮겨도 바로 찾아져서 View 이동을 안 겪는다 — 둘 다 배제해야 "장소 이동 →
+    // View 이동 → 클릭" 3단계를 항상 지나가게 된다.
+    return place !== "library" && id !== defaultSceneIdForPlace(place);
+  });
+}
+function findTutorialQueueIndex() {
+  ensureRiddleQueue();
+  for (let i = riddleQueue.length - 1; i >= 0; i--) {
+    if (qualifiesForTutorial(riddleQueue[i])) return i;
+  }
+  return -1;
+}
+
 function pickNextObjectName(previousAnswer) {
+  if (waveQuestionIndex === 0) {
+    const tutorialIndex = findTutorialQueueIndex();
+    if (tutorialIndex !== -1) return riddleQueue.splice(tutorialIndex, 1)[0];
+  }
   if (currentWaveType === "decoy" && previousAnswer) {
     const decoyIndex = findCoLocatedQueueIndex(previousAnswer);
     if (decoyIndex !== -1) return riddleQueue.splice(decoyIndex, 1)[0];
@@ -429,13 +462,17 @@ function resolveMaskClick(scene, clientX, clientY) {
   return HOTSPOT_COLORS[hex] || null;
 }
 
-// 정답/오답 시 사물 위에 원형 마커를 띄우던 방식은 사물을 가려서 제거했다 — 이제
-// 피드백은 화면 흔들림(오답)·암전+Revelation(정답)만으로 전달한다([03_판정_연출_시스템.md]
-// 참고). 이 함수는 DOM에 아무것도 그리지 않는 "가짜" dot만 만들어 handleClick()의
-// dataset.transient 판별 로직과 인터페이스를 그대로 맞춰준다.
-function makeTransientDot() {
+// 정답 시 사물 위를 덮던 단단한 원형 마커(배경색 꽉 찬 원)는 사물을 가려서 뺐지만,
+// 그 주변에 번지던 주황색 글로우는 남겨달라는 피드백을 반영해 이 dot은 여전히 사물의
+// centroid에 위치시켜둔다 — 실제로 화면에 보이는 건 handleClick()이 정답일 때만
+// className을 "correct-glow"로 바꿔 붙이는 순간부터다(오답이면 계속 빈 채로 남아
+// 아무것도 렌더링되지 않는다). dataset.transient는 handleClick()의 정리 로직이 쓴다.
+function makeTransientDot(scene, name) {
+  const centroid = scene.centroids[name] || { xPercent: 50, yPercent: 50 };
   const dot = document.createElement("div");
   dot.dataset.transient = "true";
+  dot.style.left = centroid.xPercent + "%";
+  dot.style.top = centroid.yPercent + "%";
   return dot;
 }
 
@@ -466,6 +503,9 @@ RAW_PLACE_DATA.forEach(([placeId, koLabel, objectNames], sceneIndex) => {
 });
 
 const DEMO_HINTS_EXHAUSTED = "더 이상의 실마리는 주지 않을 것이다. 고민해보아라.";
+// 첫 진명 전용 튜토리얼 대사 — 별도 튜토리얼 화면 없이, 첫 진명 자체가 조작법을
+// 알려주게 한다. maybeShowTutorialGuidance() 참고.
+const TUTORIAL_POINT_HINT = "해당 물건을 가리켜보아라. 클릭 및 터치로 가리킬 수 있다.";
 // INTRO_LINES는 js/intro.js에서 정의된다 (index.html에서 game.js보다 먼저 로드).
 
 // 한국어 조사(을/를, 으로/로)는 받침 유무에 따라 달라져서, 장소/View 이름이
@@ -628,6 +668,8 @@ function renderScene(id) {
   document.querySelectorAll("#scene-switcher button").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.scene === id)
   );
+
+  maybeShowTutorialGuidance(); // 첫 진명이 아니면 내부에서 즉시 반환됨
 }
 
 // 정답 사물명을 가진 hotspot이 있는 모든 View id를 찾는다 (복수 정답 지원).
@@ -643,12 +685,57 @@ function pickPreferUnvisited(sceneIds) {
   return (unvisited.length ? unvisited : sceneIds)[0];
 }
 
+// 정답 사물이 현재 View에 없을 때(Case B) 어디로 가야 하는지 안내 문구를 만든다.
+// 실제 오답 클릭(handleClick)과 첫 진명 튜토리얼 선제 안내(maybeShowTutorialGuidance)가
+// 이 함수를 공유한다 — 둘 다 "같은 장소면 View만, 다른 장소면 장소부터" 안내 로직은 동일해야
+// 하기 때문(안내 문구가 서로 달라지면 튜토리얼이 실제 게임 동작과 어긋나 보인다).
+function buildCaseBMessage(candidates) {
+  const samePlaceCandidates = candidates.filter((id) => DEMO_SCENES[id].place === currentPlaceId);
+  if (samePlaceCandidates.length > 0) {
+    // Case B-2: 같은 장소 안에 후보 View가 있음 → 안 가본 곳 우선으로 그 View를 안내
+    const targetSceneId = pickPreferUnvisited(samePlaceCandidates);
+    return caseB2Message(DEMO_SCENES[targetSceneId].label);
+  }
+  // Case B-1: 이 장소엔 후보가 하나도 없음 → 후보가 있는 장소 중 안 가본 곳 우선으로 안내
+  const candidatePlaceIds = [...new Set(candidates.map((id) => DEMO_SCENES[id].place))];
+  const placesWithUnvisited = candidatePlaceIds.filter((placeId) =>
+    candidates.some((id) => DEMO_SCENES[id].place === placeId && !visitedScenes.has(id))
+  );
+  const targetPlaceId = (placesWithUnvisited.length ? placesWithUnvisited : candidatePlaceIds)[0];
+  return caseB1Message(DEMO_PLACES[targetPlaceId].label);
+}
+
+// 튜토리얼: 첫 진명(waveQuestionIndex === 0)에 한해서만, 장면이 바뀔 때마다(장소 이동,
+// View 이동 전부 포함) 플레이어가 실제로 오답을 내기를 기다리지 않고 지금 상황에 맞는
+// Case A/B 안내를 선제적으로 보여준다 — renderScene()이 매번 호출한다. 둘째 진명부터는
+// 아무 일도 하지 않는다. 문구는 실제 Case A/B와 완전히 같은 걸 재사용해서(buildCaseBMessage),
+// 튜토리얼이 실제 게임과 다른 말을 하는 일이 없게 한다. 장소만 옮기고 아직 정답 View가
+// 아닌 채로 머무는 경우(예: 정답의 장소는 맞혔지만 그 장소의 기본 View라 아직 못 찾는
+// 경우)에도 매번 다시 안내가 나가야 "이동했는데 아무 반응이 없다"는 느낌이 없다 — 대신
+// 매번 새 줄을 쌓지 않고 appendOrEmphasizeLog로 처리해서, 같은 곳을 왔다 갔다 해도
+// 로그가 무한히 길어지지 않는다.
+function maybeShowTutorialGuidance() {
+  if (waveQuestionIndex !== 0) return;
+  const candidates = candidateScenesFor(currentAnswerObject);
+  if (candidates.includes(currentSceneId)) {
+    appendOrEmphasizeLog(TUTORIAL_POINT_HINT, "guide");
+  } else {
+    appendOrEmphasizeLog(buildCaseBMessage(candidates), "guide");
+  }
+}
+
 function handleClick(hotspot, dotEl) {
   if (solved || isBlinking) return;
 
   if (hotspot.name === currentAnswerObject) {
     solved = true;
-    dotEl.classList.add("correct");
+    dotEl.className = "correct-glow"; // 사물을 덮는 단단한 원 없이, centroid에서 번지는 글로우만
+    sceneFrame.appendChild(dotEl);
+    // 암전(#dim-overlay)이 화면 전체를 균일하게 덮지 않고, 정답 사물의 centroid를 중심으로
+    // 구멍을 남기며 어두워지게 한다(radial-gradient 위치를 CSS 변수로 넘김) — glow와 같은
+    // centroid를 쓰므로 dotEl에 이미 설정된 left/top(%) 값을 그대로 재사용한다.
+    dimOverlay.style.setProperty("--spot-x", dotEl.style.left || "50%");
+    dimOverlay.style.setProperty("--spot-y", dotEl.style.top || "50%");
     dimOverlay.classList.add("active");
     appendLog(currentReveal, "reveal");
     if (currentWaveType === "reverse") {
@@ -682,24 +769,8 @@ function handleClick(hotspot, dotEl) {
     return;
   }
 
-  const samePlaceCandidates = candidates.filter(
-    (id) => DEMO_SCENES[id].place === currentPlaceId
-  );
-
-  if (samePlaceCandidates.length > 0) {
-    // Case B-2: 같은 장소 안에 후보 View가 있음 → 안 가본 곳 우선으로 그 View를 안내.
-    // 안내 대상이 바뀌지 않는 한 오답마다 같은 문구가 반복되므로 강조만 한다.
-    const targetSceneId = pickPreferUnvisited(samePlaceCandidates);
-    appendOrEmphasizeLog(caseB2Message(DEMO_SCENES[targetSceneId].label), "guide");
-  } else {
-    // Case B-1: 이 장소엔 후보가 하나도 없음 → 후보가 있는 장소 중 안 가본 곳 우선으로 안내
-    const candidatePlaceIds = [...new Set(candidates.map((id) => DEMO_SCENES[id].place))];
-    const placesWithUnvisited = candidatePlaceIds.filter((placeId) =>
-      candidates.some((id) => DEMO_SCENES[id].place === placeId && !visitedScenes.has(id))
-    );
-    const targetPlaceId = (placesWithUnvisited.length ? placesWithUnvisited : candidatePlaceIds)[0];
-    appendOrEmphasizeLog(caseB1Message(DEMO_PLACES[targetPlaceId].label), "guide");
-  }
+  // Case B: 안내 대상이 바뀌지 않는 한 오답마다 같은 문구가 반복되므로 강조만 한다.
+  appendOrEmphasizeLog(buildCaseBMessage(candidates), "guide");
 }
 
 function showContinuePrompt() {
@@ -712,9 +783,9 @@ function handleContinueClick(e) {
   e.stopPropagation(); // sceneFrame의 빈 공간 클릭(리플) 리스너로 버블링되지 않게 막는다.
   dimOverlay.classList.remove("active", "awaiting-continue");
   continuePrompt.classList.remove("show");
-  document.querySelectorAll(".hotspot.correct").forEach((el) => {
+  document.querySelectorAll(".correct-glow").forEach((el) => {
     if (el.dataset.transient) el.remove();
-    else el.classList.remove("correct");
+    else el.className = "hotspot"; // 이론상 placeholder(비-mask) 모드의 영구 dot이면 원래 모습으로 복귀
   });
   solved = false;
   // hintStep은 loadNextRiddle() 안에서 파도 종류에 맞게 설정한다(평상시 0, 역방향 1) —
@@ -740,7 +811,7 @@ sceneFrame.addEventListener("click", (e) => {
   if (scene.realAssets && scene.atlasCtx) {
     const matchedName = resolveMaskClick(scene, e.clientX, e.clientY);
     if (matchedName) {
-      handleClick({ name: matchedName }, makeTransientDot());
+      handleClick({ name: matchedName }, makeTransientDot(scene, matchedName));
       return;
     }
     // 검정(빈 공간) 클릭이면 아래 리플 처리로 그대로 넘어간다.
@@ -764,6 +835,8 @@ panelToggle.addEventListener("click", () => {
 
 loadNextRiddle();
 renderPlace("library"); // 인트로 뒤에 가려진 채로 미리 준비해둔다.
+// renderPlace() -> renderScene()이 maybeShowTutorialGuidance()를 이미 호출했다 —
+// 첫 진명이면 시작 지점 기준으로 위치 안내/포인팅 안내 중 맞는 쪽이 이 시점에 뜬다.
 
 // ---------- 인트로: 신의 프롤로그 ----------
 // 한 문장씩, 문장 길이에 비례한 "읽기 편한 속도"로 순차 노출한다. 기다리는 게

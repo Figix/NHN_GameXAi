@@ -211,10 +211,22 @@ html, body {
   letter-spacing: 0.1em;
 }
 
+/* 정답 사물의 centroid(--spot-x/--spot-y, handleClick()이 설정)를 중심으로 반경
+   260px짜리 원 안은 알파를 0에 가깝게 두고, 그 바깥으로 갈수록 어두워지는 그라데이션.
+   화면 전체를 균일하게 덮지 않고 사물 주변만 "덜 어둡게" 남겨서, 별도 색을 칠하지 않고도
+   원본 이미지 자체가 스포트라이트를 받은 것처럼 드러나게 한다. circle 뒤에 반지름을 고정
+   길이(260px)로 명시해야 정답 사물이 화면 어디에 있든(가장자리 포함) 구멍 크기가 똑같이
+   유지된다 — 명시 안 하면 farthest-corner 기준이라 위치마다 크기가 달라짐. */
 #dim-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.75);
+  background: radial-gradient(
+    circle 260px at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0.12) 50px,
+    rgba(0, 0, 0, 0.5) 130px,
+    rgba(0, 0, 0, 0.85) 220px
+  );
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.5s ease;
@@ -250,14 +262,16 @@ html, body {
 /* ---------- 장소 전환 블링크(비네팅 아이리스) ---------- */
 /* ::before는 화면 중앙의 "밝은 구멍"이다 — 그 자체는 투명하고, box-shadow의
    거대한 spread(100vmax)가 이 구멍 바깥 전체를 검게 채운다. box-shadow의
-   blur-radius(18vmax)가 구멍 가장자리를 넓은 그라데이션으로 부드럽게 만든다
-   (필터 blur가 아니라 box-shadow 자체의 블러라, 가장자리 폭을 직접 조절 가능).
-   구멍의 width/height를 화면을 다 덮을 만큼 큰 값(300vmax) -> 0으로 줄이면,
-   가장자리부터 어두워지며 중앙으로 좁아지다 완전히 암전되는 것처럼 보인다.
-   그 순간 장소/View 내용을 교체한 뒤 다시 0 -> 300vmax로 넓혀서 연다(가장자리
-   쪽부터 다시 드러남). 닫힘/열림의 지속시간·이징이 서로 달라서(눈 감았다 뜨는
-   리듬) JS가 두 상태를 클래스로 토글하며 진행한다 — 자세한 타이밍은
-   js/game.js의 BLINK_* 상수 참고. */
+   blur-radius(10px, 고정 길이)가 구멍 가장자리를 아주 좁은 폭(약 10px)으로만
+   그라데이션 처리한다 — 그 밖은 완전 암전, 그 안은 원래 화면 색으로 딱 나뉘고
+   경계만 부드럽게(필터 blur가 아니라 box-shadow 자체의 블러라, 가장자리 폭을
+   직접 조절 가능. #dim-overlay의 정답 스포트라이트와 같은 "고정 길이로 경계
+   폭을 일정하게 유지" 원칙). 구멍의 width/height를 화면을 다 덮을 만큼 큰 값
+   (300vmax) -> 0으로 줄이면, 가장자리부터 어두워지며 중앙으로 좁아지다 완전히
+   암전되는 것처럼 보인다. 그 순간 장소/View 내용을 교체한 뒤 다시 0 -> 300vmax로
+   넓혀서 연다(가장자리 쪽부터 다시 드러남). 닫힘/열림의 지속시간·이징이 서로
+   달라서(눈 감았다 뜨는 리듬) JS가 두 상태를 클래스로 토글하며 진행한다 —
+   자세한 타이밍은 js/game.js의 BLINK_* 상수 참고. */
 #place-transition {
   position: absolute;
   inset: 0;
@@ -275,7 +289,7 @@ html, body {
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: transparent;
-  box-shadow: 0 0 18vmax 100vmax #000;
+  box-shadow: 0 0 10px 100vmax #000;
   transition: width 130ms ease-in, height 130ms ease-in;
 }
 
@@ -304,14 +318,22 @@ html, body {
 
 .hotspot:hover { background: rgba(216, 185, 120, 0.35); transform: scale(1.08); }
 
-.hotspot.correct {
-  z-index: 5;
-  background: var(--accent);
-  box-shadow: 0 0 0 8px rgba(216,185,120,0.25), 0 0 40px 20px rgba(216,185,120,0.6);
-}
-
 .hotspot.wrong-flash {
   background: var(--wrong);
+}
+
+/* 정답 시 centroid에서 번지는 주황색 글로우 — 사물을 덮는 단단한 원(예전 .hotspot.correct의
+   background: var(--accent))은 뺐고, 부드럽게 퍼지는 box-shadow 블룸만 남겼다. 크기가
+   0인 점에서 그림자만 번지므로 가장자리가 딱 떨어지는 원으로 보이지 않는다. */
+.correct-glow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 16px 6px rgba(216, 185, 120, 0.35), 0 0 60px 34px rgba(216, 185, 120, 0.55);
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ---------- 빈 공간 클릭 리플 ---------- */

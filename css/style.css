@@ -382,7 +382,7 @@ html, body {
      내용이 뷰포트보다 길어져도 위쪽이 잘리지 않고 스크롤 가능하게 하기 위함
      (flexbox center + overflow 조합의 알려진 함정, flexbugs #1) */
   margin: auto;
-  width: clamp(360px, 48vw, 880px);
+  width: clamp(400px, 53vw, 970px);
   max-width: 94vw;
   display: flex;
   flex-direction: column;
@@ -403,14 +403,37 @@ html, body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-#intro-continue {
+/* 새 게임/이어서 하기 — 저장 기록이 없어도 항상 좌우로 나눠서 보여준다(기록이 없을 땐
+   양쪽 다 같은 문구/동작이라 시각적으로만 반으로 나뉜 상태). 기록이 있으면(.has-save)
+   좌측이 새로 시작, 우측이 이어서 하기로 실제로 다르게 갈라진다. */
+#start-choice {
+  display: flex;
   margin-top: 1rem;
-  text-align: center;
-  color: var(--accent);
-  font-size: 0.8rem;
-  letter-spacing: 0.2em;
   opacity: 0;
   animation: intro-line-in 1.2s ease forwards;
+}
+
+#start-choice button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-right: 1px solid rgba(216, 185, 120, 0.25);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 1.2rem;
+  letter-spacing: 0.2em;
+  padding: 1.3rem 1rem;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.2s ease;
+}
+
+#start-choice button:last-child {
+  border-right: none;
+}
+
+#start-choice button:hover {
+  opacity: 1;
 }
 
 /* ---------- 모바일 세로: 하단 슬라이드 패널 ---------- */

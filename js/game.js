@@ -162,8 +162,10 @@ function nextObjectName() {
 // 다 읽혀서 물리는 문제를, 하루 제한 대신 세션 내부에 주기적인 변주를 줘서 완화한다.
 // 규칙은 docs/02_게임플레이_흐름.md "12-1. 세션 리듬 — 파도 시스템" 참고. 사물 80개의
 // 무작위 순환(riddleQueue)과는 완전히 별개의 카운터로 돈다 — 맞물릴 필요 없음.
+// 파도 하나당 3문제씩 균등하게 둬서(9문제 사이클) "3문제마다 흐름이 바뀐다"는 리듬을
+// 항상 일정하게 유지한다 — 예전엔 baseline만 5문제라 그 구간에서 체감 빈도가 늘어졌었다.
 const WAVE_CYCLE = [
-  { type: "baseline", length: 5 },
+  { type: "baseline", length: 3 },
   { type: "reverse", length: 3 },
   { type: "decoy", length: 3 },
 ];
@@ -218,7 +220,10 @@ function findTutorialQueueIndex() {
 }
 
 function pickNextObjectName(previousAnswer) {
-  if (waveQuestionIndex === 0) {
+  if (waveQuestionIndex === 0 && solvedObjects.size === 0) {
+    // solvedObjects가 이미 있으면(= "이어서 하기"로 불러온 기존 기록) 튜토리얼 대상이
+    // 아닌 진짜 신규 플레이어이므로, 이 제약(장소+View 이동을 강제하는 선정) 없이
+    // 평소처럼 고른다.
     const tutorialIndex = findTutorialQueueIndex();
     if (tutorialIndex !== -1) return riddleQueue.splice(tutorialIndex, 1)[0];
   }
@@ -551,6 +556,41 @@ let hintStep = 0;
 let solved = false;
 let isBlinking = false;
 
+// 저장/불러오기 — 지금은 진명 기록(도감)의 뼈대인 solvedObjects(맞춘 사물명 집합)만
+// localStorage에 저장한다. 진행 중이던 진명 자체(currentAnswerObject, hintStep 등)나
+// 파도 사이클 위치는 저장하지 않고 새 세션마다 처음부터 다시 돈다 — "지금까지 모은
+// 것이 안 사라진다"는 핵심만 우선 구현. 나머지 저장 값(solveMethod, locationsCleared,
+// endingsUnlocked, hintStack 등)은 그 시스템들 자체가 아직 없어서 다음 확장 대상이다
+// (docs/04_진행시스템.md 참고).
+const SAVE_KEY = "sinuieoneo:save:v1";
+let solvedObjects = new Set();
+
+function loadSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.solvedObjects)) return null;
+    return data;
+  } catch (err) {
+    console.error("[save] 저장 데이터를 읽지 못했습니다 — " + err.message);
+    return null;
+  }
+}
+
+function saveGame() {
+  try {
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ version: 1, solvedObjects: [...solvedObjects], savedAt: Date.now() })
+    );
+  } catch (err) {
+    // 프라이빗 브라우징/저장공간 제한 등으로 실패할 수 있음 — 저장이 안 되더라도
+    // 게임 플레이 자체는 계속 가능해야 하므로 조용히 넘어간다.
+    console.error("[save] 저장하지 못했습니다 — " + err.message);
+  }
+}
+
 function appendLog(text, className) {
   const p = document.createElement("p");
   if (className) p.className = className;
@@ -705,17 +745,19 @@ function buildCaseBMessage(candidates) {
   return caseB1Message(DEMO_PLACES[targetPlaceId].label);
 }
 
-// 튜토리얼: 첫 진명(waveQuestionIndex === 0)에 한해서만, 장면이 바뀔 때마다(장소 이동,
-// View 이동 전부 포함) 플레이어가 실제로 오답을 내기를 기다리지 않고 지금 상황에 맞는
-// Case A/B 안내를 선제적으로 보여준다 — renderScene()이 매번 호출한다. 둘째 진명부터는
-// 아무 일도 하지 않는다. 문구는 실제 Case A/B와 완전히 같은 걸 재사용해서(buildCaseBMessage),
-// 튜토리얼이 실제 게임과 다른 말을 하는 일이 없게 한다. 장소만 옮기고 아직 정답 View가
-// 아닌 채로 머무는 경우(예: 정답의 장소는 맞혔지만 그 장소의 기본 View라 아직 못 찾는
-// 경우)에도 매번 다시 안내가 나가야 "이동했는데 아무 반응이 없다"는 느낌이 없다 — 대신
-// 매번 새 줄을 쌓지 않고 appendOrEmphasizeLog로 처리해서, 같은 곳을 왔다 갔다 해도
-// 로그가 무한히 길어지지 않는다.
+// 튜토리얼: 첫 진명(waveQuestionIndex === 0)이면서 도감 기록이 비어있는(solvedObjects.size
+// === 0, 즉 세이브를 불러오지 않은 진짜 신규 플레이어인) 경우에 한해서만, 장면이 바뀔
+// 때마다(장소 이동, View 이동 전부 포함) 플레이어가 실제로 오답을 내기를 기다리지 않고
+// 지금 상황에 맞는 Case A/B 안내를 선제적으로 보여준다 — renderScene()이 매번 호출한다.
+// "이어서 하기"로 기존 기록을 불러온 경우엔 waveQuestionIndex가 0이어도(세션은 새로
+// 시작하니까) 튜토리얼을 다시 보여주지 않는다. 문구는 실제 Case A/B와 완전히 같은 걸
+// 재사용해서(buildCaseBMessage), 튜토리얼이 실제 게임과 다른 말을 하는 일이 없게 한다.
+// 장소만 옮기고 아직 정답 View가 아닌 채로 머무는 경우(예: 정답의 장소는 맞혔지만 그
+// 장소의 기본 View라 아직 못 찾는 경우)에도 매번 다시 안내가 나가야 "이동했는데 아무
+// 반응이 없다"는 느낌이 없다 — 대신 매번 새 줄을 쌓지 않고 appendOrEmphasizeLog로
+// 처리해서, 같은 곳을 왔다 갔다 해도 로그가 무한히 길어지지 않는다.
 function maybeShowTutorialGuidance() {
-  if (waveQuestionIndex !== 0) return;
+  if (waveQuestionIndex !== 0 || solvedObjects.size !== 0) return;
   const candidates = candidateScenesFor(currentAnswerObject);
   if (candidates.includes(currentSceneId)) {
     appendOrEmphasizeLog(TUTORIAL_POINT_HINT, "guide");
@@ -729,6 +771,8 @@ function handleClick(hotspot, dotEl) {
 
   if (hotspot.name === currentAnswerObject) {
     solved = true;
+    solvedObjects.add(currentAnswerObject); // 도감 기록 — 정답을 맞힐 때마다 자동 저장
+    saveGame();
     dotEl.className = "correct-glow"; // 사물을 덮는 단단한 원 없이, centroid에서 번지는 글로우만
     sceneFrame.appendChild(dotEl);
     // 암전(#dim-overlay)이 화면 전체를 균일하게 덮지 않고, 정답 사물의 centroid를 중심으로
@@ -833,10 +877,15 @@ panelToggle.addEventListener("click", () => {
   panelToggle.textContent = open ? "▼ 닫기" : "▲ 신의 말";
 });
 
-loadNextRiddle();
-renderPlace("library"); // 인트로 뒤에 가려진 채로 미리 준비해둔다.
-// renderPlace() -> renderScene()이 maybeShowTutorialGuidance()를 이미 호출했다 —
-// 첫 진명이면 시작 지점 기준으로 위치 안내/포인팅 안내 중 맞는 쪽이 이 시점에 뜬다.
+// 게임 본편 시작 — 새 게임/이어서 하기 선택이 끝난 뒤(showStartChoice())에만 호출한다.
+// 그때 이미 solvedObjects가 확정돼 있어야(빈 Set이든 불러온 기록이든) 첫 진명의 튜토리얼
+// 여부(maybeShowTutorialGuidance)가 정확히 판단된다 — 그래서 부팅 시 무조건 실행하지 않고
+// 선택 시점까지 미룬다. 인트로 슬라이드 전환(1.1s)이 도는 동안 배경/마스크가 미리 로드될
+// 시간은 충분해서, 미뤄도 로딩이 눈에 띄게 늦어 보이지는 않는다.
+function startGame() {
+  loadNextRiddle();
+  renderPlace("library");
+}
 
 // ---------- 인트로: 신의 프롤로그 ----------
 // 한 문장씩, 문장 길이에 비례한 "읽기 편한 속도"로 순차 노출한다. 기다리는 게
@@ -860,7 +909,7 @@ function showNextIntroLine() {
   if (introIndex >= INTRO_LINES.length) {
     if (!introFinished) {
       introFinished = true;
-      showIntroContinue();
+      showStartChoice();
     }
     return;
   }
@@ -875,19 +924,63 @@ function showNextIntroLine() {
 
 // 자동 대기 중 클릭하면 남은 대기를 취소하고 바로 다음 문장을 보여준다.
 introOverlay.addEventListener("click", () => {
-  if (introFinished) return; // 마지막 문장 이후엔 showIntroContinue()의 exitIntro 리스너가 처리
+  if (introFinished) return; // 마지막 문장 이후엔 showStartChoice()가 만든 버튼들이 각자 처리
   clearTimeout(introTimeoutId);
   showNextIntroLine();
 });
 
-function showIntroContinue() {
-  const prompt = document.createElement("p");
-  prompt.id = "intro-continue";
-  prompt.textContent = "( 눌러서 시작하기 )";
-  introLinesEl.appendChild(prompt);
-  prompt.scrollIntoView({ behavior: "smooth", block: "end" });
+// 새 게임/이어서 하기 — 화면을 좌우로 나눠서 보여준다. 기록이 없으면 양쪽 다 같은
+// 문구로 새 게임을 시작하고(반으로 나뉜 형태 자체는 유지 — 나중에 기록이 생기면 같은
+// 자리가 실제로 두 가지 의미로 갈라진다는 것을 시각적으로 미리 보여주는 셈), 기록이
+// 있으면 좌측은 새로 시작(기존 기록 삭제 전 확인), 우측은 그 기록을 불러와 이어간다.
+function showStartChoice() {
+  const save = loadSave();
+  const hasSave = !!(save && save.solvedObjects.length > 0);
+
+  const choice = document.createElement("div");
+  choice.id = "start-choice";
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  const continueBtn = document.createElement("button");
+  continueBtn.type = "button";
+
+  if (hasSave) {
+    choice.classList.add("has-save");
+    newBtn.textContent = "( 처음부터 다시 시작한다 )";
+    continueBtn.textContent = "( 이어서 계속한다 )";
+  } else {
+    newBtn.textContent = "( 눌러서 시작하기 )";
+    continueBtn.textContent = "( 눌러서 시작하기 )";
+  }
+
+  // "새로 시작"에서 확인창을 취소하면 아무 것도 안 하고 다시 선택할 수 있어야 하므로
+  // {once:true}를 안 쓴다 — 대신 실제로 진행이 확정된 순간(proceed) 두 리스너를 함께
+  // 떼어내서 중복 클릭으로 startGame()이 두 번 불리는 일을 막는다.
+  function proceed(nextSolvedObjects, clearSave) {
+    newBtn.removeEventListener("click", onNewClick);
+    continueBtn.removeEventListener("click", onContinueClick);
+    if (clearSave) localStorage.removeItem(SAVE_KEY);
+    solvedObjects = nextSolvedObjects;
+    startGame();
+    exitIntro();
+  }
+  function onNewClick(e) {
+    e.stopPropagation();
+    if (hasSave && !confirm("지금까지 모은 진명 기록이 모두 사라진다. 새로 시작할까?")) return;
+    proceed(new Set(), true);
+  }
+  function onContinueClick(e) {
+    e.stopPropagation();
+    proceed(hasSave ? new Set(save.solvedObjects) : new Set(), false);
+  }
+  newBtn.addEventListener("click", onNewClick);
+  continueBtn.addEventListener("click", onContinueClick);
+
+  choice.appendChild(newBtn);
+  choice.appendChild(continueBtn);
+  introLinesEl.appendChild(choice);
+  choice.scrollIntoView({ behavior: "smooth", block: "end" });
   introOverlay.classList.add("ready");
-  introOverlay.addEventListener("click", exitIntro, { once: true });
 }
 
 function exitIntro() {

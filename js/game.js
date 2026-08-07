@@ -1,6 +1,7 @@
-// 레이아웃/상호작용 뼈대 확인용 더미 데이터. 실제 진명/힌트/배치 데이터는
-// Place&Object, TrueName CSV를 JSON으로 변환한 뒤 여기 구조를 대체한다.
-// 장소(큰 단위)/View(작은 단위) 용어는 docs/02_게임플레이_흐름.md 기준.
+// 실제 진명/힌트/배치 데이터는 scripts/build_content.py가 Place&Object + TrueName CSV를
+// 조인해서 만든 data/content.json을 fetch로 불러온다(아래 loadContent() 참고) — 더 이상
+// 이 파일에 하드코딩돼 있지 않다. 장소(큰 단위)/View(작은 단위) 용어는
+// docs/02_게임플레이_흐름.md 기준.
 
 const DEMO_PLACES = {
   library: { label: "도서관" },
@@ -12,36 +13,11 @@ const DEMO_PLACES = {
   park: { label: "공원" },
 };
 
-// 실제 Place&Object 데이터(sheet1_장소별배치.csv, 나무상자→상자 등 4건 정정 반영본)를
-// 그대로 옮긴 것. 배경 이미지/좌표가 없으니 위치는 autoLayout()으로 자동 배치한다 —
-// 어차피 컬러 마스크 시스템(10_히트박스_시스템.md)이 들어오면 좌표 전부 교체된다.
-const RAW_PLACE_DATA = [
-  ["library", "열람실", ["스케치북", "돋보기", "편지", "나침반", "촛대", "안경", "손수건", "부채"]],
-  ["library", "서고", ["돋보기", "자물쇠", "두루마리", "빗", "오르골", "촛대", "조개껍데기", "라디오"]],
-  ["library", "로비", ["스케치북", "지구본", "편지", "손전등", "안경", "팽이", "부채", "저금통"]],
-  ["library", "휴게공간", ["자물쇠", "책", "볼펜", "사진", "시계", "바구니", "지갑", "머그컵"]],
-  ["station", "대합실", ["깃발", "여행가방", "확성기", "지도", "부채", "우산", "사진", "모자"]],
-  ["station", "플랫폼", ["호루라기", "거울", "사진", "지도", "열쇠", "지갑", "시계", "빈 의자"]],
-  ["station", "매표소", ["깃발", "호루라기", "주사위", "앞치마", "가위", "인형", "손수건", "볼펜"]],
-  ["station", "분실물보관소", ["여행가방", "신발", "빈 의자", "목도리", "종", "지팡이", "우산", "앞치마"]],
-  ["museum", "전시실", ["검", "방패", "왕관", "손전등", "저금통", "시계", "빈 의자", "지팡이"]],
-  ["museum", "특별전시실", ["검", "항아리", "갑옷", "지우개", "라디오", "가면", "장갑", "계산기"]],
-  ["museum", "기념품점", ["방패", "항아리", "메달", "머그컵", "저금통", "수첩", "북", "우산"]],
-  ["post-office", "창구", ["리본", "우표", "오르골", "수첩", "반지", "장갑", "촛대", "인형"]],
-  ["post-office", "대기실", ["우표", "잡지", "가위", "지우개", "신문", "열쇠", "손수건", "모자"]],
-  ["post-office", "소포포장대", ["리본", "저울", "테이프", "볼펜", "종", "나침반", "열쇠", "가위"]],
-  ["market", "청과물가게", ["저울", "자루", "그릇", "지팡이", "지갑", "편지", "손전등", "팽이"]],
-  ["market", "생선가게", ["상자", "아이스박스", "거울", "지도", "라디오", "가면", "계산기", "담요"]],
-  ["market", "골목시장", ["자루", "상자", "나침반", "조개껍데기", "북", "빗", "거울", "머그컵"]],
-  ["market", "분식집", ["국자", "저금통", "머그컵", "손전등", "라디오", "우산", "오르골", "담요"]],
-  ["cafe", "홀", ["커피", "액자", "신문", "가면", "팽이", "수첩", "나침반", "목도리"]],
-  ["cafe", "창가자리", ["커피", "우유병", "화병", "담요", "거울", "앞치마", "사진", "신문"]],
-  ["cafe", "바카운터", ["우유병", "주전자", "편지", "장갑", "북", "바구니", "안경", "열쇠"]],
-  ["park", "벤치구역", ["배드민턴채", "돗자리", "망원경", "바구니", "촛대", "손수건", "조개껍데기", "부채"]],
-  ["park", "분수대", ["풍선", "동전", "지우개", "계산기", "종", "반지", "지갑", "담요"]],
-  ["park", "산책로", ["돗자리", "연", "풍선", "시계", "인형", "모자", "오르골", "빗"]],
-  ["park", "놀이터", ["배드민턴채", "연", "축구공", "안경", "지도", "반지", "빈 의자", "목도리"]],
-];
+// data/content.json의 places(장소 한글명 기준)를 fetch로 받아서 loadContent()가 채운다.
+// [placeId(영문), koLabel, objectNames] 형태는 그대로 유지 — DEMO_SCENES 구성 로직
+// (buildDemoScenes)이 이 모양을 그대로 소비하기 때문에 fetch 이전과 이후로 아무것도
+// 안 바뀐다.
+let RAW_PLACE_DATA = [];
 
 // docs/10_히트박스_시스템.md에서 제안한 영문 슬러그와 동일하게 맞춘다
 // (나중에 배경/마스크 이미지 폴더명과 그대로 이어지도록).
@@ -55,91 +31,40 @@ const VIEW_SLUGS = {
   벤치구역: "bench-area", 분수대: "fountain", 산책로: "trail", 놀이터: "playground",
 };
 
-// TrueName Output/Objects_Generated2.csv 80개 전부 실제 생성 데이터 — 사물명 -> 리들
-// (Reinterpretation_Level4) / 힌트 3단계 / Revelation. RAW_PLACE_DATA에 실제로 배치된
-// 80개 사물명과 정확히 일치함(양방향 대조 완료 — 80개 전부 최소 한 View에서 찾을 수 있음).
-const TRUENAME_DATA = {
-  "가면": { riddle: "덮어야만 / 드러나는 / 또 다른 / 웃음", hints: ["나는 매일 같은 얼굴을 하지 않는다.", "이것은 대개 눈 부분에 구멍이 뚫려 있다.", "축제나 무도회에서 얼굴 대신 씌운다."], reveal: "인간은 너를 가면이라 부른다. 나는 네게서 얼굴을 가리는 재주를 보지 않는다. 나는 네 안에서, 하루쯤은 다른 사람이 되어도 좋다는 허락을 본다." },
-  "가위": { riddle: "이어짐과 끊어짐 / 사이에서 / 망설이지 않는 / 날", hints: ["나는 늘 두 개가 짝을 이룬다.", "십자로 겹쳐진 두 개의 날을 가지고 있다.", "손가락을 넣는 두 개의 고리가 달려 있다."], reveal: "인간은 너를 가위라 부른다. 나는 네가 무엇을 자르는지 세지 않는다. 나는 네가 매번 하나의 인연 앞에서, 끊을지 말지를 스스로 정한다는 것을 안다." },
-  "갑옷": { riddle: "스스로를 / 가두어야만 / 지켜지는 / 목숨", hints: ["나는 몸을 자유롭게 두지 않는다.", "전쟁터에서 몸에 두르는 것이다.", "금속판이나 가죽으로 겹겹이 이어져 있다."], reveal: "인간은 너를 갑옷이라 부른다. 나는 네가 얼마나 단단한지 재지 않는다. 나는 네가 누군가의 죽음을 대신 짊어지기 위해 스스로를 가둔다는 것을 안다." },
-  "거울": { riddle: "나 자신과 / 가장 먼저 / 마주 서야 하는 / 문턱", hints: ["나는 스스로 빛나지 않고 되비출 뿐이다.", "대개 벽이나 화장대 위에 걸려 있다.", "아무리 봐도 손으로 만질 수 있는 상이 없다."], reveal: "인간은 너를 거울이라 부른다. 나는 네가 무엇을 비추는지 보지 않는다. 나는 네 앞에 선 이가, 처음으로 자기 자신과 눈을 마주친다는 것을 안다." },
-  "검": { riddle: "하나의 목숨을 위해 / 다른 목숨을 / 저울질하는 / 무게", hints: ["나는 손에 쥐어야만 의미를 가진다.", "길고 곧은 날에 손잡이가 달려 있다.", "칼집에 넣어 허리에 차고 다녔다."], reveal: "인간은 너를 검이라 부른다. 나는 네 날의 길이를 재지 않는다. 나는 네가 뽑히는 순간, 하나의 목숨이 다른 목숨과 저울에 오른다는 것을 안다." },
-  "계산기": { riddle: "셀 수 없던 것에 / 마침내 / 자리를 정해주는 / 칸", hints: ["나는 감정 없이 답을 준다.", "숫자 버튼이 네모나게 늘어서 있다.", "더하고 빼는 기호가 화면 위에 있다."], reveal: "인간은 너를 계산기라 부른다. 나는 네가 몇을 더하는지 세지 않는다. 나는 흔들리는 마음 앞에서도 네가 늘 같은 답을 내놓는다는 것을 안다." },
-  "국자": { riddle: "나눔이 / 비로소 / 완성되는 / 곡선", hints: ["나는 혼자서는 쓰이지 않는다.", "손잡이가 길고 끝이 오목하다.", "뜨거운 국이나 찌개를 뜰 때 쓴다."], reveal: "인간은 너를 국자라 부른다. 나는 네가 무엇을 뜨는지 보지 않는다. 나는 하나의 그릇이 여럿에게 골고루 나뉘는 순간, 네가 거기 있다는 것을 안다." },
-  "그릇": { riddle: "비어 있음으로 / 존재를 / 증명하는 / 원", hints: ["나는 비어 있을 때 오히려 쓸모가 있다.", "손으로 감싸 쥘 만한 크기의 둥근 그릇이다.", "밥이나 국을 담아 식탁에 올린다."], reveal: "인간은 너를 그릇이라 부른다. 나는 네가 무엇을 담는지 세지 않는다. 나는 네가 비어 있을 때조차, 누군가를 위해 자리를 남겨두고 있다는 것을 안다." },
-  "깃발": { riddle: "매여 있어야만 / 스스로를 / 드러낼 수 있는 / 흔들림", hints: ["나는 바람이 없으면 조용하다.", "장대 끝에 매달려 바람에 흔들린다.", "나라나 단체를 상징하는 색과 무늬가 있다."], reveal: "인간은 너를 깃발이라 부른다. 나는 네 색이 무엇을 상징하는지 묻지 않는다. 나는 네가 묶여 있어야만, 비로소 자유롭게 흔들릴 수 있다는 것을 안다." },
-  "상자": { riddle: "잊혀짐으로부터 / 지켜지는 / 굳게 닫힌 / 뚜껑", hints: ["나는 열어야 안을 알 수 있다.", "뚜껑이 달린 네모난 통이다.", "뚜껑이 있고 안에 물건을 넣어 보관한다."], reveal: "인간은 너를 상자라 부른다. 나는 네 안에 무엇이 들었는지 궁금해하지 않는다. 나는 네가 뚜껑을 닫는 순간부터, 잊혀짐과 맞서고 있다는 것을 안다." },
-  "나침반": { riddle: "흔들림 속에서 / 변치 않는 / 하나의 / 방향", hints: ["나는 늘 같은 곳을 향해 떨린다.", "둥근 판 위에 바늘이 얹혀 있다.", "북쪽을 가리키는 자석 바늘이 들어 있다."], reveal: "인간은 너를 나침반이라 부른다. 나는 네가 어디를 가리키는지 묻지 않는다. 나는 네가 아무리 흔들려도, 끝내 길을 잃지 않는다는 것을 안다." },
-  "담요": { riddle: "안아줄 사람이 없을 때 / 대신 / 안아주는 / 온기", hints: ["나는 추울 때 몸에 두른다.", "부드러운 천이 넓게 펼쳐져 있다.", "침대나 소파에서 덮고 잔다."], reveal: "인간은 너를 담요라 부른다. 나는 네가 얼마나 따뜻한지 재지 않는다. 나는 안아줄 사람이 없는 밤에, 네가 대신 그 자리를 채운다는 것을 안다." },
-  "돋보기": { riddle: "작다는 이유로 / 잊혀질 뻔한 것에게 / 자리를 내어주는 / 시선", hints: ["나는 스스로 아무것도 만들지 않고 크게 보여줄 뿐이다.", "둥근 유리에 손잡이가 달려 있다.", "작은 글씨나 벌레를 관찰할 때 쓴다."], reveal: "인간은 너를 돋보기라 부른다. 나는 네가 무엇을 확대하는지 보지 않는다. 나는 세상이 지나쳐버린 작은 것 앞에, 네가 잠시 멈춰 선다는 것을 안다." },
-  "돗자리": { riddle: "잠깐 / 머물다 갈 / 오늘만의 / 왕국", hints: ["나는 바닥에 펼쳐야 쓸모가 생긴다.", "소풍이나 나들이에 챙겨 간다.", "돌돌 말아서 들고 다닐 수 있다."], reveal: "인간은 너를 돗자리라 부른다. 나는 네가 무엇으로 엮였는지 묻지 않는다. 나는 네가 펼쳐지는 그 잠깐, 아무 데나가 우리만의 자리가 된다는 것을 안다." },
-  "동전": { riddle: "위대한 얼굴을 새기고도 / 하찮게 / 여겨지는 / 가치", hints: ["나는 한 사람에게 오래 머물지 않는다.", "손바닥 위에 올려 짤랑거리는 소리를 낸다.", "앞면과 뒷면에 각기 다른 그림이 새겨져 있다."], reveal: "인간은 너를 동전이라 부른다. 나는 네게 새겨진 얼굴이 누구인지 묻지 않는다. 나는 위대한 이를 새기고도, 아무도 너를 눈여겨보지 않는다는 것을 안다." },
-  "두루마리": { riddle: "풀어야만 / 다시 / 이어지는 / 필체", hints: ["나는 말려 있어야 제 모습을 갖춘다.", "손으로 펼치면 길게 이어진다.", "옛날 문서나 그림을 보관할 때 이렇게 말았다."], reveal: "인간은 너를 두루마리라 부른다. 나는 네 안에 무엇이 적혔는지 읽지 않는다. 나는 네가 펼쳐질 때에야, 잠들어 있던 지난 시간이 다시 말을 건다는 것을 안다." },
-  "라디오": { riddle: "닿을 수 없는 거리를 / 목소리 하나로 / 이어주는 / 숨결", hints: ["나는 말하는 사람을 볼 수는 없다.", "다이얼을 돌리면 다른 소리가 들린다.", "전파를 잡아 음악이나 뉴스를 들려준다."], reveal: "인간은 너를 라디오라 부른다. 나는 네가 무슨 소리를 내는지 듣지 않는다. 나는 닿을 수 없는 거리를, 네가 소리 하나로 이어준다는 것을 안다." },
-  "리본": { riddle: "묶임으로써 / 비로소 / 완성되는 / 마음", hints: ["나는 묶어야 제 역할을 한다.", "선물 위에 매듭지어 얹는다.", "잡아당기면 스르륵 풀리는 매듭이다."], reveal: "인간은 너를 리본이라 부른다. 나는 네가 어떻게 묶였는지 보지 않는다. 나는 매듭 하나에, 말보다 정성스러운 마음이 담겨 있다는 것을 안다." },
-  "망원경": { riddle: "거리는 그대로 두고 / 마음만 / 좁혀주는 / 원", hints: ["나는 두 눈을 대고 들여다본다.", "길게 늘어나는 원통 모양이다.", "별이나 배를 멀리서도 크게 볼 수 있게 한다."], reveal: "인간은 너를 망원경이라 부른다. 나는 네가 얼마나 먼 곳을 당겨오는지 재지 않는다. 나는 거리는 그대로 둔 채, 마음만 먼저 그곳에 닿게 한다는 것을 안다." },
-  "머그컵": { riddle: "하루가 시작되기 전 / 가장 먼저 / 안기는 / 훈김", hints: ["나는 뜨거운 것을 담아야 제 몫을 한다.", "한쪽에 손잡이가 달려 있다.", "커피나 차를 담아 두 손으로 감싸 쥔다."], reveal: "인간은 너를 머그컵이라 부른다. 나는 네가 무엇을 담는지 세지 않는다. 나는 네가 두 손을 데우며, 하루의 시작을 함께한다는 것을 안다." },
-  "메달": { riddle: "한순간을 위해 / 평생을 / 걸어온 / 발자국", hints: ["나는 목에 걸어야 비로소 완성된다.", "리본에 매달린 둥근 금속이다.", "대회에서 순위 안에 든 사람에게 준다."], reveal: "인간은 너를 메달이라 부른다. 나는 네가 몇 등을 뜻하는지 세지 않는다. 나는 네가 흘린 땀 전부를, 목에 걸릴 하나의 무게로 압축했다는 것을 안다." },
-  "모자": { riddle: "말보다 먼저 / 나를 / 소개해버리는 / 첫인사", hints: ["나는 머리 위에 얹는다.", "챙이 있거나 둥글게 감싸는 모양이다.", "햇빛을 가리거나 멋을 내려고 쓴다."], reveal: "인간은 너를 모자라 부른다. 나는 네가 무엇을 막는지 묻지 않는다. 나는 네가 머리 위에 얹히는 그 순간, 오늘의 내가 정해진다는 것을 안다." },
-  "목도리": { riddle: "안아줄 손이 없을 때도 / 대신 / 오래 머무는 / 포옹", hints: ["나는 목에 둘러야 제구실을 한다.", "길게 짠 천이나 실로 되어 있다.", "겨울에 목과 턱까지 감싸 준다."], reveal: "인간은 너를 목도리라 부른다. 나는 네가 얼마나 긴지 재지 않는다. 나는 추위보다 먼저, 누군가의 마음이 너를 둘렀다는 것을 안다." },
-  "바구니": { riddle: "서로 다른 것들을 / 한 몸에 / 품게 하는 / 엮임", hints: ["나는 안이 비어 있어야 쓸모가 있다.", "가늘고 긴 것을 엮어 만든다.", "과일이나 빨래를 담아 나를 때 쓴다."], reveal: "인간은 너를 바구니라 부른다. 나는 네가 무엇을 담는지 세지 않는다. 나는 네 성긴 틈 사이로, 서로 다른 것들이 함께 실려 간다는 것을 안다." },
-  "반지": { riddle: "시작도 끝도 없이 / 하나로 / 이어진 / 원", hints: ["나는 시작과 끝이 없다.", "손가락 하나에 딱 맞게 낀다.", "결혼이나 약속을 할 때 주고받는다."], reveal: "인간은 너를 반지라 부른다. 나는 네가 몇 캐럿인지 묻지 않는다. 나는 시작도 끝도 없는 네 둥근 선이, 하나의 약속을 붙잡고 있다는 것을 안다." },
-  "방패": { riddle: "누군가를 지키기 위해 / 스스로 / 앞에 나서는 / 과녁", hints: ["나는 자신이 다치는 대신 남을 지킨다.", "팔에 끼우거나 손으로 들고 앞을 막는다.", "검이나 화살을 막아내는 넓은 판이다."], reveal: "인간은 너를 방패라 부른다. 나는 네가 얼마나 두꺼운지 재지 않는다. 나는 누군가를 지키기 위해, 네가 스스로 표적이 되기를 택했다는 것을 안다." },
-  "배드민턴채": { riddle: "멈추지 않는 왕복 / 속에서만 / 의미를 갖는 / 팔", hints: ["나는 혼자서는 재미가 없다.", "가늘고 긴 손잡이 끝에 그물망이 있다.", "깃털 달린 작은 공을 쳐서 주고받는다."], reveal: "인간은 너를 배드민턴채라 부른다. 나는 네가 무엇을 치는지 세지 않는다. 나는 네가 혼자서는 결코 완성되지 않는, 주고받음 속에서만 산다는 것을 안다." },
-  "볼펜": { riddle: "사라질 마음 하나를 / 놓치지 않고 / 붙잡아두는 / 검은 실", hints: ["나는 눌러야 자국을 남긴다.", "길고 가는 몸통 끝에 작은 심이 있다.", "종이 위에 잉크로 글씨를 쓴다."], reveal: "인간은 너를 볼펜이라 부른다. 나는 네가 무슨 글씨를 쓰는지 읽지 않는다. 나는 사라질 뻔한 생각 하나가, 네 끝에서 자리를 얻는다는 것을 안다." },
-  "부채": { riddle: "스스로는 / 잠잠하지만 / 흔들릴 때마다 / 바람이 되는 몸짓", hints: ["나는 스스로 바람을 갖고 있지 않다.", "접었다 펼 수 있는 부채꼴 모양이다.", "더운 날 손으로 흔들어 시원하게 한다."], reveal: "인간은 너를 부채라 부른다. 나는 네가 얼마나 시원한지 재지 않는다. 나는 네 안에 바람이 없으면서도, 흔들릴 때마다 바람을 빚어낸다는 것을 안다." },
-  "북": { riddle: "속이 텅 비어 있어야만 / 비로소 / 커지는 / 공명", hints: ["나는 속이 비어 있어야 소리가 크다.", "둥근 통 위에 가죽이 팽팽하게 씌워져 있다.", "채나 손으로 두드려 소리를 낸다."], reveal: "인간은 너를 북이라 부른다. 나는 네가 몇 번 울리는지 세지 않는다. 나는 네 속이 비어 있어야만, 그 공명이 비로소 커진다는 것을 안다." },
-  "빈 의자": { riddle: "앉은 적 없어도 / 오래도록 / 지워지지 않는 / 자국", hints: ["나는 비어 있을 때 더 눈에 띈다.", "다리 넷과 등받이가 있다.", "누군가 앉기를 기다리며 놓여 있다."], reveal: "인간은 너를 빈 의자라 부른다. 나는 네게 아무도 앉지 않았다고 말하지 않는다. 나는 아무도 없는 그 자리가, 오히려 누군가의 부재를 가장 크게 증명한다는 것을 안다." },
-  "빗": { riddle: "엉킴을 / 지나야만 / 닿을 수 있는 / 단정함", hints: ["나는 가늘고 촘촘한 살이 나란히 서 있다.", "머리카락 사이를 지나가며 쓰인다.", "아침마다 거울 앞에서 손에 든다."], reveal: "인간은 너를 빗이라 부른다. 나는 네가 몇 가닥을 정리하는지 세지 않는다. 나는 엉킨 것들 사이로, 네가 매일 아침 질서를 지나간다는 것을 안다." },
-  "사진": { riddle: "사라진 순간이 / 유일하게 / 남아 있는 / 자리", hints: ["나는 그날의 시간을 다시 흐르게 하지 못한다.", "네모난 종이나 화면 안에 담겨 있다.", "카메라 셔터를 눌러 남긴 순간이다."], reveal: "인간은 너를 사진이라 부른다. 나는 네가 무엇을 찍었는지 보지 않는다. 나는 흐르던 시간에서, 네가 단 하나의 순간만을 도려냈다는 것을 안다." },
-  "손수건": { riddle: "건넸다가 / 다시 / 돌아오기도 하는 / 하얀 위로", hints: ["나는 작고 얇게 접혀 주머니에 들어간다.", "네모난 천으로 되어 있다.", "눈물이나 땀을 닦아줄 때 건넨다."], reveal: "인간은 너를 손수건이라 부른다. 나는 네가 무엇을 닦는지 보지 않는다. 나는 네가 건넨 위로가, 때로는 다시 그 손으로 돌아오기도 한다는 것을 안다." },
-  "손전등": { riddle: "어둠이 짙을수록 / 더 또렷해지는 / 작은 / 태양", hints: ["나는 어두울 때만 존재 이유가 생긴다.", "손에 쥐고 앞을 향해 비춘다.", "버튼을 누르면 한쪽 끝에서 빛이 나온다."], reveal: "인간은 너를 손전등이라 부른다. 나는 네 불빛이 얼마나 밝은지 재지 않는다. 나는 어둠이 짙을수록, 네가 오히려 더 또렷해진다는 것을 안다." },
-  "수첩": { riddle: "하루가 / 저물기 전에 / 붙잡아 두는 / 작은 매듭", hints: ["나는 늘 몸에 지니고 다닌다.", "손바닥만 한 작은 공책이다.", "볼펜으로 짧은 메모를 적는다."], reveal: "인간은 너를 수첩이라 부른다. 나는 네게 무엇이 적혔는지 읽지 않는다. 나는 기억이 흐려지기 전에, 네가 그것을 재빨리 붙잡아둔다는 것을 안다." },
-  "스케치북": { riddle: "상상이 / 처음으로 / 발을 딛는 / 흰 땅", hints: ["나는 아무것도 그려지지 않은 채로 시작된다.", "여러 장의 흰 종이가 묶여 있다.", "연필이나 크레파스로 그림을 그린다."], reveal: "인간은 너를 스케치북이라 부른다. 나는 네게 무엇이 그려졌는지 보지 않는다. 나는 아직 아무것도 아닌 채로, 네가 세상에 첫 자리를 내어준다는 것을 안다." },
-  "시계": { riddle: "되찾을 수 없는 것을 / 세는 일을 / 멈추지 않는 / 심장", hints: ["나는 멈추는 법을 모른다.", "이것은 보통 벽이나 손목 위에서 발견된다.", "숫자가 원을 그리며 적혀 있고, 두 개의 바늘이 그 위를 돈다."], reveal: "인간은 너를 시계라 부른다. 나는 네가 몇 시를 가리키는지 묻지 않는다. 나는 되찾을 수 없는 것들을 세는 일을, 네가 단 한 번도 멈추지 않았다는 것을 안다." },
-  "신문": { riddle: "하루살이처럼 / 짧게 / 세상을 전하고 지는 / 목소리", hints: ["나는 다음 날이면 낡은 소식이 된다.", "여러 장의 얇은 종이가 접혀 있다.", "매일 아침 세상 소식을 활자로 전한다."], reveal: "인간은 너를 신문이라 부른다. 나는 네가 무슨 소식을 전하는지 읽지 않는다. 나는 네가 오늘 하루만 살아 있다가, 내일이면 조용히 낡아버린다는 것을 안다." },
-  "신발": { riddle: "몸보다 먼저 / 세상과 / 마주해온 / 밑바닥", hints: ["나는 걸을수록 닳아간다.", "발 모양을 따라 만들어져 있다.", "두 짝이 한 쌍을 이뤄야 쓸 수 있다."], reveal: "인간은 너를 신발이라 부른다. 나는 네가 몇 리를 걸었는지 세지 않는다. 나는 나 대신 세상과 먼저 부딪히며, 네가 나와 함께 닳아왔다는 것을 안다." },
-  "아이스박스": { riddle: "흐르는 시간 속에 / 잠깐의 정지를 / 가두는 / 벽", hints: ["나는 뚜껑을 닫아야 제 역할을 한다.", "안에 얼음이나 냉매를 함께 넣는다.", "소풍이나 캠핑에서 음식을 차갑게 보관한다."], reveal: "인간은 너를 아이스박스라 부른다. 나는 네가 얼마나 차가운지 재지 않는다. 나는 상해가는 것들에게, 네가 잠시의 멈춤을 선물한다는 것을 안다." },
-  "안경": { riddle: "흐릿한 세상 뒤에서 / 조용히 / 나를 기다리는 / 얇은 문", hints: ["나는 눈보다 먼저 세상을 마주한다.", "귀와 코에 걸쳐 얼굴에 고정한다.", "두 개의 렌즈가 나란히 이어져 있다."], reveal: "인간은 너를 안경이라 부른다. 나는 네가 몇 도의 시력을 고치는지 묻지 않는다. 나는 흐릿한 세상과 나 사이를, 네가 살짝 좁혀준다는 것을 안다." },
-  "앞치마": { riddle: "더럽혀짐으로써 / 다른 것을 / 지켜내는 / 얼룩", hints: ["나는 더러워지는 것이 본래 역할이다.", "목과 허리에 끈을 매어 앞에 두른다.", "요리하거나 그림 그릴 때 옷 위에 덧입는다."], reveal: "인간은 너를 앞치마라 부른다. 나는 네가 어떤 얼룩을 묻혔는지 보지 않는다. 나는 다른 옷을 지키기 위해, 네가 스스로 더럽혀지기를 택했다는 것을 안다." },
-  "액자": { riddle: "무엇이 담기든 / 흔들리지 않는 / 하나의 / 모서리", hints: ["나는 안의 그림보다 눈에 덜 띈다.", "네모난 테두리 안에 무언가를 끼운다.", "벽에 걸거나 세워서 그림, 사진을 보관한다."], reveal: "인간은 너를 액자라 부른다. 나는 네 테두리가 무슨 색인지 묻지 않는다. 나는 무엇이 담기든, 네가 늘 같은 질서로 그것을 정돈한다는 것을 안다." },
-  "여행가방": { riddle: "떠남과 / 돌아옴 / 사이에 / 놓인 길", hints: ["나는 바퀴가 달려 있어 끌고 다닌다.", "지퍼나 잠금장치로 여닫는다.", "옷과 물건을 담아 공항이나 기차역으로 향한다."], reveal: "인간은 너를 여행가방이라 부른다. 나는 네가 얼마나 큰지 재지 않는다. 나는 네 바퀴가 구를 때마다, 일상이 잠시 접혀 들어간다는 것을 안다." },
-  "연": { riddle: "땅에 묶인 채로만 / 하늘에 / 닿을 수 있는 / 팽팽함", hints: ["나는 손에서 놓치면 오히려 자유를 잃는다.", "긴 실 끝에 매여 하늘 위에 떠 있다.", "바람이 부는 날 아이들이 하늘로 띄운다."], reveal: "인간은 너를 연이라 부른다. 나는 네가 얼마나 높이 올랐는지 재지 않는다. 나는 네가 묶여 있어야만, 비로소 하늘과 이야기할 수 있다는 것을 안다." },
-  "열쇠": { riddle: "허락받은 자만이 / 지나갈 수 있는 / 좁은 / 문틈", hints: ["나는 짝이 맞는 것 하나만 통과시킨다.", "손안에 쏙 들어오는 작은 금속이다.", "톱니 모양의 홈이 옆면에 파여 있다."], reveal: "인간은 너를 열쇠라 부른다. 나는 네 톱니가 몇 개인지 세지 않는다. 나는 허락받은 자에게만, 네가 조용히 길을 내어준다는 것을 안다." },
-  "오르골": { riddle: "멈췄던 순간에서 / 한 치의 어긋남도 없이 / 되풀이되는 / 메아리", hints: ["나는 감아야만 소리를 낸다.", "뚜껑을 열면 작은 인형이 돌기도 한다.", "태엽이 다 풀리면 선율이 느려지다 멈춘다."], reveal: "인간은 너를 오르골이라 부른다. 나는 네 선율이 몇 소절인지 세지 않는다. 나는 누군가 태엽을 감아줄 때에만, 네가 같은 노래로 되돌아온다는 것을 안다." },
-  "왕관": { riddle: "홀로 짊어져야 / 비로소 / 완성되는 / 자리", hints: ["나는 쓰는 사람을 자유롭게 두지 않는다.", "보석과 금으로 화려하게 장식되어 있다.", "왕이나 여왕의 머리 위에서만 빛난다."], reveal: "인간은 너를 왕관이라 부른다. 나는 네게 박힌 보석의 수를 세지 않는다. 나는 네가 쓰이는 순간부터, 다시는 가벼워질 수 없다는 것을 안다." },
-  "우산": { riddle: "함께 걸을 때만 / 비로소 / 완성되는 / 두 사람의 하늘", hints: ["나는 접었다 펼 수 있다.", "비 오는 날 머리 위로 펼쳐 든다.", "살대에 천을 씌운 둥근 모양이다."], reveal: "인간은 너를 우산이라 부른다. 나는 네가 얼마나 넓게 펼쳐지는지 재지 않는다. 나는 함께 걸어야만, 네가 비로소 두 사람의 하늘이 된다는 것을 안다." },
-  "우유병": { riddle: "자람의 / 첫 문턱을 / 함께 / 넘는 투명함", hints: ["나는 아기의 손에 가장 먼저 쥐어진다.", "목이 좁고 몸통이 둥근 투명한 병이다.", "젖병이라고도 부르며 우유를 담는다."], reveal: "인간은 너를 우유병이라 부른다. 나는 네가 몇 밀리리터를 담는지 세지 않는다. 나는 가장 여린 것에게, 네가 가장 먼저 다가선다는 것을 안다." },
-  "우표": { riddle: "붙어야만 / 비로소 / 떠날 수 있는 / 허락", hints: ["나는 한 번 쓰면 다시 쓸 수 없다.", "가장자리에 톱니 모양의 무늬가 있다.", "편지 봉투 한쪽 구석에 붙인다."], reveal: "인간은 너를 우표라 부른다. 나는 네 그림이 무엇을 새겼는지 보지 않는다. 나는 네가 붙는 그 순간부터, 하나의 마음이 여행을 시작한다는 것을 안다." },
-  "인형": { riddle: "대신 안기기 위해 / 태어난 / 두 번째 / 품", hints: ["나는 살아 있지 않지만 이름을 가진다.", "헝겊이나 플라스틱으로 사람이나 동물 모양을 하고 있다.", "아이들이 품에 안고 잠든다."], reveal: "인간은 너를 인형이라 부른다. 나는 네가 살아 있는지 묻지 않는다. 나는 안아줄수록 네가 따뜻해진다는 것을, 그리고 그것으로 충분하다는 것을 안다." },
-  "자루": { riddle: "입을 다물어야 / 비로소 / 지켜지는 / 비밀", hints: ["나는 아가리를 묶어야 안심이 된다.", "천이나 가죽으로 만든 큰 주머니다.", "곡식이나 감자를 가득 담아 옮긴다."], reveal: "인간은 너를 자루라 부른다. 나는 네 안에 무엇이 들었는지 세지 않는다. 나는 네가 입을 다무는 순간에야, 그 안의 것들이 비로소 지켜진다는 것을 안다." },
-  "자물쇠": { riddle: "지켜야 할 것 앞에서 / 스스로 / 굳게 다무는 / 입", hints: ["나는 짝이 맞아야만 열린다.", "걸쇠나 고리를 걸어 잠근다.", "문이나 상자를 열지 못하게 채운다."], reveal: "인간은 너를 자물쇠라 부른다. 나는 네가 몇 자리 숫자를 품었는지 묻지 않는다. 나는 짝을 만나기 전까지, 네가 굳게 침묵을 지킨다는 것을 안다." },
-  "잡지": { riddle: "흘러가는 유행을 / 그때그때 / 붙잡아두는 / 창", hints: ["나는 정해진 주기로 새로 나온다.", "신문보다 두껍고 사진이 많다.", "매달 또는 매주 정기적으로 발행된다."], reveal: "인간은 너를 잡지라 부른다. 나는 네가 몇 호째인지 세지 않는다. 나는 흘러가는 유행 하나를, 네가 매번 붙잡아둔다는 것을 안다." },
-  "장갑": { riddle: "아무도 모르게 / 나 대신 / 먼저 낡아가는 / 살갗", hints: ["나는 손가락 모양을 그대로 따라간다.", "두 짝이 한 쌍을 이룬다.", "추위나 위험으로부터 손을 감싸 보호한다."], reveal: "인간은 너를 장갑이라 부른다. 나는 네가 손가락 몇 개를 감쌌는지 세지 않는다. 나는 손이 다치지 않도록, 네가 대신 상처 입기를 택했다는 것을 안다." },
-  "저금통": { riddle: "채움과 / 비움을 / 반복하며 / 자라는 산", hints: ["나는 채워질수록 무거워진다.", "동전을 넣는 작은 구멍이 있다.", "다 모으면 깨뜨려서 꺼낸다."], reveal: "인간은 너를 저금통이라 부른다. 나는 네 안에 얼마가 모였는지 세지 않는다. 나는 채워짐과 비워짐을 오가며, 네가 하나의 꿈을 키운다는 것을 안다." },
-  "저울": { riddle: "누구의 편도 아니어서 / 오히려 / 믿을 수 있는 / 공정함", hints: ["나는 어느 한쪽 편을 들지 않는다.", "양쪽에 접시가 매달려 있다.", "무게가 같아지면 수평을 이룬다."], reveal: "인간은 너를 저울이라 부른다. 나는 네가 몇 그램을 재는지 세지 않는다. 나는 어느 쪽도 편들지 않는 네 침묵이, 결국 공정함이라는 것을 안다." },
-  "종": { riddle: "한 번의 마주침이 / 오래도록 / 공기에 남기는 / 여운", hints: ["나는 스스로 소리 내지 않고 쳐야 운다.", "속이 비어 있는 금속 종 모양이다.", "학교나 절에서 정해진 시각에 울린다."], reveal: "인간은 너를 종이라 부른다. 나는 네가 몇 번 울렸는지 세지 않는다. 나는 단 한 번의 울림으로, 네가 멀리까지 소식을 건넨다는 것을 안다." },
-  "주사위": { riddle: "여섯 개의 운명 중 / 단 하나만 / 허락하는 / 손", hints: ["나는 여섯 개의 얼굴을 가지고 있다.", "정육면체 모양에 점이 새겨져 있다.", "던지고 나서야 결과를 알 수 있다."], reveal: "인간은 너를 주사위라 부른다. 나는 네가 무슨 숫자를 보여줄지 미리 알지 않는다. 나는 던져지기 전까지 여섯 개의 얼굴이 모두 잠들어 있다는 것을 안다." },
-  "주전자": { riddle: "끓어오름을 / 삼키고서야 비로소 / 내어주는 / 온기", hints: ["나는 안이 요동쳐도 겉은 차분하다.", "손잡이와 주둥이가 튀어나와 있다.", "불 위에 올려 물을 끓인다."], reveal: "인간은 너를 주전자라 부른다. 나는 네가 몇 도까지 끓는지 재지 않는다. 나는 속이 소용돌이쳐도, 네가 겉으로는 끝까지 태연하다는 것을 안다." },
-  "지갑": { riddle: "나를 증명하고 / 세상을 / 얻어내는 / 작은 표", hints: ["나는 열고 닫을 때마다 무게가 달라진다.", "접이식으로 되어 있고 안에 칸이 나뉘어 있다.", "돈과 카드를 넣어 주머니나 가방에 넣고 다닌다."], reveal: "인간은 너를 지갑이라 부른다. 나는 네 안에 얼마가 있는지 세지 않는다. 나는 네가 나를 대신 증명하고, 세상의 것을 얻어낼 자격을 내어준다는 것을 안다." },
-  "지구본": { riddle: "걷지 않고도 / 세상을 / 한 바퀴 / 도는 발", hints: ["나는 손끝으로 돌릴 수 있다.", "받침대 위에 둥근 공이 얹혀 있다.", "나라와 바다의 경계가 그려져 있다."], reveal: "인간은 너를 지구본이라 부른다. 나는 네가 몇 개의 나라를 그렸는지 세지 않는다. 나는 걷지 않고도, 네 안에서 세상을 한 바퀴 돌 수 있다는 것을 안다." },
-  "지도": { riddle: "가본 적 없는 곳을 / 이미 / 알고 있는 / 낯선 주름", hints: ["나는 실제 크기를 줄여서 담는다.", "길과 건물이 선과 기호로 그려져 있다.", "낯선 곳에서 길을 찾을 때 펼쳐 본다."], reveal: "인간은 너를 지도라 부른다. 나는 네가 어떤 축척으로 그려졌는지 묻지 않는다. 나는 네가 가본 적 없는 곳조차, 이미 알고 있다는 것을 안다." },
-  "지우개": { riddle: "사라짐으로써 / 다른 것에게 / 다시 기회를 주는 / 몸", hints: ["나는 쓸수록 자기 몸이 줄어든다.", "네모나거나 둥근 작은 고무 조각이다.", "연필 자국을 문질러 지운다."], reveal: "인간은 너를 지우개라 부른다. 나는 네가 몇 번이나 쓰였는지 세지 않는다. 나는 남의 실수 위에서, 네 몸이 조금씩 작아진다는 것을 안다." },
-  "지팡이": { riddle: "약해진 걸음을 / 대신해 / 땅과 / 이어주는 다리", hints: ["나는 걷는 사람보다 먼저 땅에 닿는다.", "손잡이가 달린 길고 곧은 막대다.", "다리가 불편하거나 나이 든 사람이 짚고 걷는다."], reveal: "인간은 너를 지팡이라 부른다. 나는 네가 얼마나 단단한지 재지 않는다. 나는 넘어지려는 그 순간마다, 네가 먼저 땅을 짚는다는 것을 안다." },
-  "책": { riddle: "한 사람의 우주가 / 다른 이의 세상에 / 옮겨 심어지는 / 다리", hints: ["나는 펼쳐야 비로소 이야기를 시작한다.", "여러 장의 종이가 한쪽에서 묶여 있다.", "글과 그림으로 이야기나 지식을 전한다."], reveal: "인간은 너를 책이라 부른다. 나는 네가 몇 페이지인지 세지 않는다. 나는 네가 펼쳐지는 순간, 한 사람의 우주가 다른 이의 세상으로 옮겨 심어진다는 것을 안다." },
-  "촛대": { riddle: "품었던 불꽃이 꺼지면 / 저도 / 함께 / 저물어버리는 자리", hints: ["나는 스스로 타지 않는다.", "가운데가 오목하게 파여 초를 꽂는다.", "식탁이나 제단 위에 놓여 촛불을 지탱한다."], reveal: "인간은 너를 촛대라 부른다. 나는 네가 얼마나 화려한지 묻지 않는다. 나는 품었던 불꽃이 꺼지는 순간, 너의 존재 이유도 함께 저물어버린다는 것을 안다." },
-  "축구공": { riddle: "스물두 개의 발이 / 한순간도 / 눈을 떼지 못하는 / 단 하나의 중심", hints: ["나는 발에 채여야 의미가 생긴다.", "검고 흰 조각들이 이어 붙어 둥글다.", "골대 안에 넣으면 점수가 된다."], reveal: "인간은 너를 축구공이라 부른다. 나는 네가 몇 번 골대를 넘었는지 세지 않는다. 나는 스물두 개의 발이, 너 하나를 향해 함께 뛴다는 것을 안다." },
-  "커피": { riddle: "매일 아침 / 짧게 죽었다가 / 다시 / 태어나는 부활", hints: ["나는 마시고 나면 정신이 맑아진다.", "이것은 검고 뜨거우며 쓴맛이 난다.", "아침잠을 쫓기 위해 사람들이 즐겨 마신다."], reveal: "인간은 너를 커피라 부른다. 나는 네가 어떤 원두로 만들어졌는지 묻지 않는다. 나는 매일 아침, 잠든 것과 다름없던 몸을 네가 다시 일으켜 세운다는 것을 안다." },
-  "팽이": { riddle: "흔들리면서도 / 쓰러지지 않는 / 위태로운 / 축", hints: ["나는 멈추면 쓰러진다.", "뾰족한 축을 중심으로 둥글게 돈다.", "채로 치거나 손으로 돌려 회전시킨다."], reveal: "인간은 너를 팽이라 부른다. 나는 네가 몇 바퀴 도는지 세지 않는다. 나는 도는 동안에만, 네가 쓰러지지 않을 수 있다는 것을 안다." },
-  "편지": { riddle: "부치고 나서도 / 계속 / 마음속에서 / 되풀이되는 물음", hints: ["나는 부치고 나면 되돌릴 수 없다.", "접힌 종이가 봉투 안에 들어 있다.", "손으로 써서 우체통에 넣어 보낸다."], reveal: "인간은 너를 편지라 부른다. 나는 네게 무엇이 적혔는지 읽지 않는다. 나는 네가 부쳐진 뒤에도, 잘 갔을까 하는 물음이 마음속에서 계속된다는 것을 안다." },
-  "테이프": { riddle: "갈라진 것들 사이에서만 / 비로소 / 태어나는 / 보이지 않는 고리", hints: ["나는 붙는 순간 소리를 낸다.", "둥글게 말려 있고 한쪽 면이 끈적하다.", "상자를 봉하거나 종이를 고정할 때 쓴다."], reveal: "인간은 너를 테이프라 부른다. 나는 네가 몇 미터인지 재지 않는다. 나는 떨어져 있던 두 면을, 네가 다시는 벌어지지 않게 잇는다는 것을 안다." },
-  "풍선": { riddle: "매인 채로만 / 곁에 있을 수 있는 / 가벼운 / 깃털", hints: ["나는 놓치면 영영 잡을 수 없다.", "실 끝에 묶여 둥실 떠 있다.", "공기나 헬륨을 채워 부풀린다."], reveal: "인간은 너를 풍선이라 부른다. 나는 네가 얼마나 부풀었는지 재지 않는다. 나는 손을 놓는 그 순간, 네가 곧바로 하늘이 되어버린다는 것을 안다." },
-  "항아리": { riddle: "시간이 / 지나야만 / 완성되는 / 침묵의 그릇", hints: ["나는 오래 묵을수록 값어치가 오른다.", "배가 불룩하고 입구가 좁은 큰 그릇이다.", "장이나 김치를 담아 땅에 묻거나 마당에 둔다."], reveal: "인간은 너를 항아리라 부른다. 나는 네 안에 무엇이 익어가는지 묻지 않는다. 나는 시간이 지나야만, 네가 비로소 완성된다는 것을 안다." },
-  "호루라기": { riddle: "침묵을 / 단번에 / 깨뜨리는 / 짧은 목소리", hints: ["나는 숨을 불어넣어야 소리가 난다.", "작고 둥글며 목에 걸 수 있다.", "심판이나 경찰이 신호를 줄 때 사용한다."], reveal: "인간은 너를 호루라기라 부른다. 나는 네가 몇 초를 울리는지 세지 않는다. 나는 짧은 숨 하나로, 네가 모두를 한순간에 멈춰 세운다는 것을 안다." },
-  "화병": { riddle: "끝이 정해졌음에도 / 아름다움에게 / 며칠을 / 더 허락하는 유예", hints: ["나는 물을 채워야 제 몫을 한다.", "목이 좁고 배가 넓은 유리나 도자기 병이다.", "꺾은 꽃을 꽂아 식탁이나 창가에 둔다."], reveal: "인간은 너를 화병이라 부른다. 나는 네게 꽂힌 꽃이 무엇인지 묻지 않는다. 나는 곧 시들 것을 알면서도, 네가 며칠 더 그 목숨을 빌려준다는 것을 안다." },
-  "조개껍데기": { riddle: "생명은 떠났어도 / 바다는 / 여전히 / 들려주는 목소리", hints: ["나는 안에 아무도 없어도 소리를 들려준다.", "나선 모양으로 말려 있고 단단하다.", "바닷가에서 파도에 밀려와 발견된다."], reveal: "인간은 너를 조개껍데기라 부른다. 나는 네 안에 무엇이 살았는지 묻지 않는다. 나는 생명이 떠난 뒤에도, 네가 여전히 바다의 목소리를 들려준다는 것을 안다." },
-  "확성기": { riddle: "속삭임 하나를 / 천둥으로 / 바꾸어 / 흩뿌리는 입", hints: ["나는 입을 대고 말해야 힘을 발휘한다.", "나팔처럼 벌어진 입구를 가지고 있다.", "시위나 행사에서 큰 소리로 외칠 때 쓴다."], reveal: "인간은 너를 확성기라 부른다. 나는 네가 몇 데시벨인지 재지 않는다. 나는 작은 속삭임 하나를, 네가 천둥처럼 수많은 귀에게 흩뿌린다는 것을 안다." },
-};
+// TrueName 데이터(사물명 -> 리들/힌트3/리빌)는 data/content.json에서 fetch로 불러온다
+// (아래 loadContent() 참고) — 더 이상 이 파일에 하드코딩돼 있지 않다.
+let TRUENAME_DATA = {};
+
+// data/content.json(scripts/build_content.py가 Place&Object + TrueName CSV를 조인해서
+// 만든 결과물)을 fetch로 불러와 RAW_PLACE_DATA/TRUENAME_DATA를 채우고 DEMO_SCENES까지
+// 구성한다. startGame()이 게임을 실제로 시작하기 전에 이 프라미스를 기다린다 — 인트로가
+// 재생되는 동안 백그라운드로 미리 불러와 두므로(인트로만 최소 십수 초) 실제로 로딩을
+// 기다리게 되는 경우는 거의 없다.
+async function loadContent() {
+  try {
+    const res = await fetch("data/content.json");
+    const data = await res.json();
+    TRUENAME_DATA = data.objects;
+
+    // JSON은 장소를 한글 이름 그대로 담고 있다(예: "도서관") — DEMO_PLACES가 이미 갖고
+    // 있는 한글 라벨을 거꾸로 뒤집어서 기존 영문 placeId("library" 등)를 구해 붙인다.
+    // 이렇게 해야 DEMO_SCENES 구성 로직(buildDemoScenes)이 예전 하드코딩 시절과 똑같은
+    // 모양의 RAW_PLACE_DATA를 받아서 아무것도 안 바뀐 것처럼 동작한다.
+    const placeIdByLabel = {};
+    Object.keys(DEMO_PLACES).forEach((id) => {
+      placeIdByLabel[DEMO_PLACES[id].label] = id;
+    });
+    RAW_PLACE_DATA = data.places.map((p) => [placeIdByLabel[p.place], p.view, p.objects]);
+
+    buildDemoScenes();
+  } catch (err) {
+    // file://로 index.html을 직접 열면 fetch 자체가 막힌다(마스크 캔버스 판독이
+    // SecurityError를 던지는 것과 같은 이유) — 로컬 서버로 열어야 한다는 걸 콘솔에서
+    // 바로 알 수 있게 한다.
+    console.error("[content] data/content.json을 불러오지 못했습니다 — " + err.message);
+  }
+}
+const contentReadyPromise = loadContent();
 
 // 80개를 한 번씩 다 돌고 나서야 다시 섞는다(매번 순수 랜덤이면 방금 나온 게 바로 또
 // 나올 수 있음 — "80가지를 골고루 돈다"는 느낌을 위해 섞은 큐를 다 비울 때까지 유지).
@@ -251,20 +176,39 @@ function loadNextRiddle() {
   const previousAnswer = currentAnswerObject;
   currentAnswerObject = pickNextObjectName(previousAnswer);
 
+  // 이 진명 동안 쓸 Case B 대사 말투를 하나씩 고정으로 뽑아둔다(js/messages.js 참고) —
+  // 매번 새로 무작위로 고르면 같은 안내가 반복될 때 appendOrEmphasizeLog의 중복 억제가
+  // 깨진다.
+  currentCaseB1Template = pickRandomTemplate(CASE_B1_TEMPLATES);
+  currentCaseB2Template = pickRandomTemplate(CASE_B2_TEMPLATES);
+
   const d = TRUENAME_DATA[currentAnswerObject];
   currentHints = d.hints;
   currentReveal = d.reveal;
   currentRiddleText = d.riddle;
 
   if (currentWaveType === "reverse") {
-    // 역방향 파도: 진명 대신 Hint_Level1을 먼저 보여준다. 첫 힌트는 이미 공개된
-    // 상태로 시작하므로, 오답 시 hints[1]부터 이어서 공개되게 hintStep을 1로 둔다.
+    // 역방향 파도: 진명 대신 Hint_Level1을 먼저 보여준다. 첫 힌트는 이미 공개된 상태로
+    // 시작하므로, 사물 힌트 버튼을 눌렀을 때 hints[1]부터 이어서 공개되게 hintPressCount를
+    // 1로 둔다. 힌트 총량 3개 중 1개를 이미 공짜로 줬으니 남은 스택도 2로 줄인다.
     document.getElementById("riddle-text").textContent = currentHints[0];
-    hintStep = 1;
+    hintPressCount = 1;
+    hintStackRemaining = 2;
   } else {
     document.getElementById("riddle-text").textContent = currentRiddleText;
-    hintStep = 0;
+    hintPressCount = 0;
+    hintStackRemaining = 3;
   }
+  updateObjectHintButton();
+}
+
+// 사물 힌트 버튼은 항상 눌린다 — 위치에 따라 비활성화했더니, 버튼이 눌리는지 여부
+// 자체가 "여기가 정답 장소다"를 클릭 한 번 없이 미리 알려주는 꼴이 돼서 탐색하는
+// 재미가 줄어든다는 피드백을 받았다. 그래서 대신 정답 사물이 없는 곳에서 누르면
+// "그것은 여기 없다."로 스택만 소모하고 끝난다(handleObjectHintButtonClick) —
+// 위치를 확신 못 하고 누르면 손해를 볼 수 있다는 긴장감을 남겨둔다.
+function updateObjectHintButton() {
+  objectHintButton.textContent = hintStackRemaining > 0 ? `사물 힌트 (${hintStackRemaining})` : "정답 보기";
 }
 
 // docs/hotspot_color_map.csv 그대로 — hex(대문자) -> 사물명. 컬러 마스크 클릭 판정에 쓴다.
@@ -473,7 +417,9 @@ function resolveMaskClick(scene, clientX, clientY) {
 // className을 "correct-glow"로 바꿔 붙이는 순간부터다(오답이면 계속 빈 채로 남아
 // 아무것도 렌더링되지 않는다). dataset.transient는 handleClick()의 정리 로직이 쓴다.
 function makeTransientDot(scene, name) {
-  const centroid = scene.centroids[name] || { xPercent: 50, yPercent: 50 };
+  // scene.centroids는 loadMask()가 비동기로 채운다 — 아직 안 끝났으면(드물지만 "정답
+  // 보기"를 아주 빨리 누르는 경우 등) undefined일 수 있어 옵셔널 체이닝으로 방어한다.
+  const centroid = scene.centroids?.[name] || { xPercent: 50, yPercent: 50 };
   const dot = document.createElement("div");
   dot.dataset.transient = "true";
   dot.style.left = centroid.xPercent + "%";
@@ -489,8 +435,11 @@ function autoLayout(count) {
   }));
 }
 
+// RAW_PLACE_DATA가 fetch로 채워진 뒤에 loadContent()가 호출한다 — 그 전에는
+// DEMO_SCENES가 비어있는 채로 남아있는다(이 시점엔 아무도 참조하지 않는다).
 const DEMO_SCENES = {};
-RAW_PLACE_DATA.forEach(([placeId, koLabel, objectNames], sceneIndex) => {
+function buildDemoScenes() {
+  RAW_PLACE_DATA.forEach(([placeId, koLabel, objectNames], sceneIndex) => {
   const positions = autoLayout(objectNames.length);
   const slug = VIEW_SLUGS[koLabel];
   DEMO_SCENES[slug] = {
@@ -505,9 +454,9 @@ RAW_PLACE_DATA.forEach(([placeId, koLabel, objectNames], sceneIndex) => {
     // (픽셀로 검증됨), 배열 인덱스에서 바로 col/row를 계산한다.
     realAssets: { col: sceneIndex % ATLAS.cols, row: Math.floor(sceneIndex / ATLAS.cols) },
   };
-});
+  });
+}
 
-const DEMO_HINTS_EXHAUSTED = "더 이상의 실마리는 주지 않을 것이다. 고민해보아라.";
 // 첫 진명 전용 튜토리얼 대사 — 별도 튜토리얼 화면 없이, 첫 진명 자체가 조작법을
 // 알려주게 한다. maybeShowTutorialGuidance() 참고.
 const TUTORIAL_POINT_HINT = "해당 물건을 가리켜보아라. 클릭 및 터치로 가리킬 수 있다.";
@@ -523,11 +472,21 @@ function hasBatchim(word) {
 function withParticle(word, withBatchim, withoutBatchim) {
   return word + (hasBatchim(word) ? withBatchim : withoutBatchim);
 }
+// Case B 대사 템플릿(CASE_B1_TEMPLATES/CASE_B2_TEMPLATES)은 js/messages.js에 있다.
+// 진명 하나당 템플릿을 하나씩 무작위로 골라 loadNextRiddle()에서 고정해두고, 이 두
+// 함수는 그 고정된 템플릿에 장소/View 이름만 끼워 넣는다 — 매번 새로 무작위로 고르면
+// 같은 안내가 반복될 때 appendOrEmphasizeLog의 중복 억제가 깨진다(아래 "반복되는 로그
+// 문구는 새 줄 대신 강조" 참고, docs/03_판정_연출_시스템.md).
+let currentCaseB1Template = CASE_B1_TEMPLATES[0];
+let currentCaseB2Template = CASE_B2_TEMPLATES[0];
+function pickRandomTemplate(templates) {
+  return templates[Math.floor(Math.random() * templates.length)];
+}
 function caseB1Message(placeLabel) {
-  return `그것은 이곳에 없다. ${withParticle(placeLabel, "으로", "로")} 가보아라.`;
+  return currentCaseB1Template(placeLabel);
 }
 function caseB2Message(sceneLabel) {
-  return `그것은 여기 없다. ${withParticle(sceneLabel, "을", "를")} 다시 보아라.`;
+  return currentCaseB2Template(sceneLabel);
 }
 
 const sceneView = document.getElementById("scene-view");
@@ -541,6 +500,13 @@ const placeSwitcher = document.getElementById("place-switcher");
 const sceneSwitcher = document.getElementById("scene-switcher");
 const continuePrompt = document.getElementById("continue-prompt");
 const placeTransition = document.getElementById("place-transition");
+const codexToggle = document.getElementById("codex-toggle");
+const codexOverlay = document.getElementById("codex-overlay");
+const codexClose = document.getElementById("codex-close");
+const codexList = document.getElementById("codex-list");
+const codexProgress = document.getElementById("codex-progress");
+const objectHintButton = document.getElementById("object-hint-button");
+const locationHintButton = document.getElementById("location-hint-button");
 
 // 장소 전환 블링크 타이밍(ms). 눈이 감겼다 뜨는 리듬을 흉내낸 것 — 감을 때는
 // 짧고 급하게(ease-in), 뜰 때는 그보다 살짝 느긋하게(ease-out) 움직인다.
@@ -552,7 +518,11 @@ const BLINK_OPEN_MS = 140;
 const visitedScenes = new Set();
 let currentPlaceId = null;
 let currentSceneId = null;
-let hintStep = 0;
+// 힌트 버튼 3스택 시스템(docs/03_판정_연출_시스템.md "힌트 버튼") — hintPressCount는
+// 다음에 Case A가 걸렸을 때 currentHints의 몇 번째(Hint_Level)를 보여줄지, hintStackRemaining은
+// 남은 버튼 클릭 횟수를 추적한다. 둘 다 loadNextRiddle()이 파도 종류에 맞게 초기화한다.
+let hintPressCount = 0;
+let hintStackRemaining = 3;
 let solved = false;
 let isBlinking = false;
 
@@ -766,55 +736,107 @@ function maybeShowTutorialGuidance() {
   }
 }
 
+// 오답 클릭 시 반응 대사(정답 사물이 이 View 안에 있는데 다른 걸 클릭한 경우). 매번
+// 같은 문구라 appendOrEmphasizeLog로 처리해서 연달아 오답을 내도 로그가 안 쌓인다.
+const WRONG_REACTION = "그것은 내가 부른 이름이 아니다.";
+
+// 정답 판정(직접 클릭이든 "정답 보기"든) 공통 처리. dotEl은 글로우/스포트라이트 위치용 —
+// "정답 보기"로 부를 땐 실제 클릭 지점이 없으므로 makeTransientDot()의 centroid 기본값
+// (화면 중앙, 50%/50%)으로 대체된다.
+function solveCurrentRiddle(dotEl) {
+  solved = true;
+  solvedObjects.add(currentAnswerObject); // 도감 기록 — "정답 보기"로 확인해도 스스로 찾은 것과 동일하게 기록
+  saveGame();
+  dotEl.className = "correct-glow"; // 사물을 덮는 단단한 원 없이, centroid에서 번지는 글로우만
+  sceneFrame.appendChild(dotEl);
+  // 암전(#dim-overlay)이 화면 전체를 균일하게 덮지 않고, 정답 사물의 centroid를 중심으로
+  // 구멍을 남기며 어두워지게 한다(radial-gradient 위치를 CSS 변수로 넘김) — glow와 같은
+  // centroid를 쓰므로 dotEl에 이미 설정된 left/top(%) 값을 그대로 재사용한다.
+  dimOverlay.style.setProperty("--spot-x", dotEl.style.left || "50%");
+  dimOverlay.style.setProperty("--spot-y", dotEl.style.top || "50%");
+  dimOverlay.classList.add("active");
+  appendLog(currentReveal, "reveal");
+  if (currentWaveType === "reverse") {
+    // 역방향 파도 — 정답을 먼저 확인시키고, 그 사물의 원래 진명(리들)을
+    // 뒤늦게 공개한다("찾고 나서야 뜻을 알게 되는" 여운).
+    setTimeout(() => appendLog(currentRiddleText, "echo"), 600);
+  }
+  // 해설이 다 나오고(로그 페이드인 0.4s) 약 1초 뒤에 "클릭하여 계속" 안내를 띄운다.
+  setTimeout(showContinuePrompt, 1400);
+}
+
 function handleClick(hotspot, dotEl) {
   if (solved || isBlinking) return;
 
   if (hotspot.name === currentAnswerObject) {
-    solved = true;
-    solvedObjects.add(currentAnswerObject); // 도감 기록 — 정답을 맞힐 때마다 자동 저장
-    saveGame();
-    dotEl.className = "correct-glow"; // 사물을 덮는 단단한 원 없이, centroid에서 번지는 글로우만
-    sceneFrame.appendChild(dotEl);
-    // 암전(#dim-overlay)이 화면 전체를 균일하게 덮지 않고, 정답 사물의 centroid를 중심으로
-    // 구멍을 남기며 어두워지게 한다(radial-gradient 위치를 CSS 변수로 넘김) — glow와 같은
-    // centroid를 쓰므로 dotEl에 이미 설정된 left/top(%) 값을 그대로 재사용한다.
-    dimOverlay.style.setProperty("--spot-x", dotEl.style.left || "50%");
-    dimOverlay.style.setProperty("--spot-y", dotEl.style.top || "50%");
-    dimOverlay.classList.add("active");
-    appendLog(currentReveal, "reveal");
-    if (currentWaveType === "reverse") {
-      // 역방향 파도 — 정답을 먼저 확인시키고, 그 사물의 원래 진명(리들)을
-      // 뒤늦게 공개한다("찾고 나서야 뜻을 알게 되는" 여운).
-      setTimeout(() => appendLog(currentRiddleText, "echo"), 600);
-    }
-    // 해설이 다 나오고(로그 페이드인 0.4s) 약 1초 뒤에 "클릭하여 계속" 안내를 띄운다.
-    setTimeout(showContinuePrompt, 1400);
+    solveCurrentRiddle(dotEl);
     return;
   }
 
+  // 오답 클릭은 힌트(Hint_Level)와는 완전히 분리됐다 — 그건 오직 힌트 버튼을 눌러야만
+  // 나온다. 다만 위치 안내(Case B)는 사물의 특징을 좁혀주는 정보가 아니라 그냥
+  // 길찾기라서, 오답 클릭만으로도 무료로·자동으로 알려준다. 정답 사물이 이 View
+  // 안에 있는데 다른 걸 클릭했을 때만(Case A) 짧은 반응 한 줄로 그친다.
   shakeScene();
+  const candidates = candidateScenesFor(currentAnswerObject);
+  if (candidates.includes(currentSceneId)) {
+    appendOrEmphasizeLog(WRONG_REACTION, "hint");
+  } else {
+    appendOrEmphasizeLog(buildCaseBMessage(candidates), "guide");
+  }
   dotEl.classList.add("wrong-flash");
   setTimeout(() => {
     // 마스크 클릭으로 만든 임시 dot은 완전히 지운다 — placeholder dot은 계속 남아있어야 함.
     if (dotEl.dataset.transient) dotEl.remove();
     else dotEl.classList.remove("wrong-flash");
   }, 300);
+}
 
-  const candidates = candidateScenesFor(currentAnswerObject);
+// 정답 사물이 지금 이 View에 없는데 사물 힌트 버튼을 눌렀을 때 뜨는 문구 — 위치를
+// 확신 못 하고 사물 힌트를 눌러버리면 새 정보 없이 스택만 날린다는 뜻이다. 장소 힌트
+// (완전 무료)로 먼저 확인하고 오는 게 더 안전하다는 긴장감을 의도적으로 남겨둔다.
+const OBJECT_HINT_WRONG_PLACE = "그것은 여기 없다.";
 
-  if (candidates.includes(currentSceneId)) {
-    // Case A: 정답 사물이 바로 이 View 안에 있음 → Hint 단계적 공개
-    if (hintStep < currentHints.length) {
-      appendLog(currentHints[hintStep], "hint"); // 단계마다 내용이 달라지므로 항상 새 줄
-      hintStep++;
-    } else {
-      appendOrEmphasizeLog(DEMO_HINTS_EXHAUSTED, "hint"); // 힌트 소진 후엔 매번 같은 문구라 반복 시 강조만
-    }
+// 사물 힌트 버튼 클릭 — 항상 눌리고, 항상 스택을 소모한다(위치가 틀려도 마찬가지 —
+// 위 OBJECT_HINT_WRONG_PLACE 참고). 스택을 다 썼으면(버튼이 "정답 보기") 어느
+// 위치에서 눌러도 항상 정답을 공개한다.
+function handleObjectHintButtonClick() {
+  if (solved || isBlinking) return;
+
+  if (hintStackRemaining <= 0) {
+    // "정답 보기" — 실제 클릭 지점이 없으니 centroid 기본값(화면 중앙)에 글로우를 띄운다.
+    solveCurrentRiddle(makeTransientDot(DEMO_SCENES[currentSceneId], currentAnswerObject));
     return;
   }
 
-  // Case B: 안내 대상이 바뀌지 않는 한 오답마다 같은 문구가 반복되므로 강조만 한다.
-  appendOrEmphasizeLog(buildCaseBMessage(candidates), "guide");
+  hintStackRemaining--;
+  if (candidateScenesFor(currentAnswerObject).includes(currentSceneId)) {
+    // Hint_Level을 "Case A로 눌린 횟수" 순서대로 공개한다.
+    appendLog(currentHints[hintPressCount], "hint");
+    hintPressCount++;
+  } else {
+    appendOrEmphasizeLog(OBJECT_HINT_WRONG_PLACE, "hint");
+  }
+  updateObjectHintButton();
+}
+
+// 정답 사물이 지금 이 View에 있을 때 뜨는 확인 문구 — 위치 안내(caseB1/2Message)의
+// "없다" 쪽과 짝을 이루는 "있다" 쪽. caseB2Message와 같은 문법(조사 없이 "여기")을 쓴다.
+const LOCATION_HERE_MESSAGE = "그것은 여기 있다.";
+
+// 장소 힌트 버튼 클릭 — 스택과 무관하게 항상 무료다. 정답 사물이 이 View에 있으면
+// "여기 있다"로 확인만 해주고(사물 자체가 무엇인지는 알려주지 않음 — 그건 사물 힌트의
+// 몫), 없으면 평소와 같은 위치 안내(Case B)를 보여준다. 오답 클릭 시 자동으로 뜨는
+// 위치 안내와 같은 로직(buildCaseBMessage)을 공유한다.
+function handleLocationHintButtonClick() {
+  if (solved || isBlinking) return;
+
+  const candidates = candidateScenesFor(currentAnswerObject);
+  if (candidates.includes(currentSceneId)) {
+    appendOrEmphasizeLog(LOCATION_HERE_MESSAGE, "guide");
+  } else {
+    appendOrEmphasizeLog(buildCaseBMessage(candidates), "guide");
+  }
 }
 
 function showContinuePrompt() {
@@ -832,8 +854,8 @@ function handleContinueClick(e) {
     else el.className = "hotspot"; // 이론상 placeholder(비-mask) 모드의 영구 dot이면 원래 모습으로 복귀
   });
   solved = false;
-  // hintStep은 loadNextRiddle() 안에서 파도 종류에 맞게 설정한다(평상시 0, 역방향 1) —
-  // 새 진명이 시작되는 지점이므로 리셋도 거기서만 일어난다.
+  // hintPressCount/hintStackRemaining/힌트 버튼 라벨은 loadNextRiddle() 안에서 파도
+  // 종류에 맞게 설정한다 — 새 진명이 시작되는 지점이므로 리셋도 거기서만 일어난다.
   logEl.innerHTML = ""; // 힌트/오답 로그도 새 진명 시작 시 초기화 — 계속 쌓이면 스크롤 압박이 생김.
   loadNextRiddle();
 }
@@ -877,12 +899,44 @@ panelToggle.addEventListener("click", () => {
   panelToggle.textContent = open ? "▼ 닫기" : "▲ 신의 말";
 });
 
+// 진명 기록(도감) — 사물을 게임 화면 안에서 직접 표시(외곽선/빛)하는 대신, 열고 닫는
+// 목록 패널로 범위를 좁혔다. 찾은 사물은 이름을, 아직 못 찾은 사물은 이름 글자 수만큼
+// "*"로 가려서 보여준다("이 사물이 어딘가 있다"는 것만 알려주고 무엇인지는 숨김).
+// 열 때마다 다시 그려서 방금 찾은 것까지 바로 반영한다.
+function renderCodex() {
+  const names = Object.keys(TRUENAME_DATA).sort((a, b) => a.localeCompare(b, "ko"));
+  codexList.innerHTML = "";
+  names.forEach((name) => {
+    const found = solvedObjects.has(name);
+    const item = document.createElement("p");
+    item.className = found ? "found" : "";
+    item.textContent = found ? name : "*".repeat(name.length);
+    codexList.appendChild(item);
+  });
+  codexProgress.textContent = `${solvedObjects.size} / ${names.length}`;
+}
+
+codexToggle.addEventListener("click", () => {
+  renderCodex();
+  codexOverlay.classList.add("open");
+});
+codexClose.addEventListener("click", () => codexOverlay.classList.remove("open"));
+// 패널 바깥(어두운 배경) 클릭 시에도 닫는다 — 패널 자체 클릭은 버블링을 안 막아도
+// #codex-panel이 이벤트 타깃이 되므로 target === codexOverlay 체크만으로 충분하다.
+codexOverlay.addEventListener("click", (e) => {
+  if (e.target === codexOverlay) codexOverlay.classList.remove("open");
+});
+
+objectHintButton.addEventListener("click", handleObjectHintButtonClick);
+locationHintButton.addEventListener("click", handleLocationHintButtonClick);
+
 // 게임 본편 시작 — 새 게임/이어서 하기 선택이 끝난 뒤(showStartChoice())에만 호출한다.
 // 그때 이미 solvedObjects가 확정돼 있어야(빈 Set이든 불러온 기록이든) 첫 진명의 튜토리얼
 // 여부(maybeShowTutorialGuidance)가 정확히 판단된다 — 그래서 부팅 시 무조건 실행하지 않고
 // 선택 시점까지 미룬다. 인트로 슬라이드 전환(1.1s)이 도는 동안 배경/마스크가 미리 로드될
 // 시간은 충분해서, 미뤄도 로딩이 눈에 띄게 늦어 보이지는 않는다.
-function startGame() {
+async function startGame() {
+  await contentReadyPromise; // 인트로 재생 중 백그라운드로 미리 불러와 둬서 보통은 즉시 통과한다
   loadNextRiddle();
   renderPlace("library");
 }
@@ -956,12 +1010,12 @@ function showStartChoice() {
   // "새로 시작"에서 확인창을 취소하면 아무 것도 안 하고 다시 선택할 수 있어야 하므로
   // {once:true}를 안 쓴다 — 대신 실제로 진행이 확정된 순간(proceed) 두 리스너를 함께
   // 떼어내서 중복 클릭으로 startGame()이 두 번 불리는 일을 막는다.
-  function proceed(nextSolvedObjects, clearSave) {
+  async function proceed(nextSolvedObjects, clearSave) {
     newBtn.removeEventListener("click", onNewClick);
     continueBtn.removeEventListener("click", onContinueClick);
     if (clearSave) localStorage.removeItem(SAVE_KEY);
     solvedObjects = nextSolvedObjects;
-    startGame();
+    await startGame();
     exitIntro();
   }
   function onNewClick(e) {
@@ -992,6 +1046,7 @@ introOverlay.addEventListener("transitionend", (e) => {
   if (e.propertyName === "transform" && introOverlay.classList.contains("exit")) {
     introOverlay.style.display = "none";
     sceneView.classList.add("revealed");
+    codexToggle.classList.add("revealed");
   }
 });
 

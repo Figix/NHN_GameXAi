@@ -16,6 +16,10 @@
     <section id="riddle-box">
       <p class="label">신은 말한다</p>
       <p id="riddle-text">시간을 / 노래하는 / 마지막 / 심장</p>
+      <div id="hint-buttons">
+        <button id="object-hint-button" type="button">사물 힌트 (3)</button>
+        <button id="location-hint-button" type="button">장소 힌트</button>
+      </div>
     </section>
     <div id="log"></div>
   </aside>
@@ -33,7 +37,20 @@
 
   <button id="panel-toggle" type="button">▲ 신의 말</button>
 </div>
+
+<button id="codex-toggle" type="button" aria-label="진명 기록">☰</button>
+<div id="codex-overlay">
+  <div id="codex-panel">
+    <div id="codex-header">
+      <p class="label">진명 기록</p>
+      <p id="codex-progress"></p>
+      <button id="codex-close" type="button" aria-label="닫기">×</button>
+    </div>
+    <div id="codex-list"></div>
+  </div>
+</div>
 <script src="js/intro.js"></script>
+<script src="js/messages.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

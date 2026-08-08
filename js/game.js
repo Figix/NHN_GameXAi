@@ -508,6 +508,90 @@ const codexProgress = document.getElementById("codex-progress");
 const objectHintButton = document.getElementById("object-hint-button");
 const locationHintButton = document.getElementById("location-hint-button");
 
+// ---------- 오디오 ----------
+// Audio/03_생성_프롬프트.md 스펙으로 생성한 파일들 — audio/sfx, audio/ambience, audio/music.
+// sfx_place_complete/sfx_ending_full/sfx_ending_partial은 그 상태(장소 매듭/엔딩 도달)를
+// 판정하는 게임 로직 자체가 아직 없어서(docs/TODO.md "게임 시스템 — 기획서엔 있지만
+// 미구현" 참고) 여기 연결하지 않는다 — audio/sfx/에 파일만 미리 둔다.
+const SFX_FILES = {
+  correct: "audio/sfx/sfx_correct_answer.wav",
+  wrong: "audio/sfx/sfx_wrong_answer.wav",
+  empty: "audio/sfx/sfx_empty_click.wav",
+  hint: "audio/sfx/sfx_hint_button.wav",
+  reveal: "audio/sfx/sfx_reveal_answer.wav",
+  transition: "audio/sfx/sfx_place_transition.wav",
+};
+const SFX_VOLUME = 0.6;
+function playSfx(name) {
+  const src = SFX_FILES[name];
+  if (!src) return;
+  // 매번 새 Audio 인스턴스를 만들어 재생한다 — 연달아 오답을 눌러도(shakeScene처럼
+  // 재시작 애니메이션이 아니라) 이전 재생과 겹쳐서 들리게 하기 위함. 브라우저가
+  // 리소스는 캐싱하므로 매번 새로 받아오지 않는다.
+  const audio = new Audio(src);
+  audio.volume = SFX_VOLUME;
+  audio.play().catch(() => {}); // 자동재생 차단 등은 조용히 무시 — 게임 플레이엔 지장 없어야 함
+}
+
+// 장소별 앙비언스 — 01_톤_방향.md "여백을 존중한다" 원칙대로 SFX보다 훨씬 낮은 볼륨.
+const AMBIENCE_FILES = {
+  library: "audio/ambience/amb_library.mp3",
+  station: "audio/ambience/amb_station.mp3",
+  museum: "audio/ambience/amb_museum.mp3",
+  "post-office": "audio/ambience/amb_post_office.mp3",
+  market: "audio/ambience/amb_market.mp3",
+  cafe: "audio/ambience/amb_cafe.mp3",
+  park: "audio/ambience/amb_park.mp3",
+};
+const ambienceAudio = new Audio();
+ambienceAudio.loop = true;
+ambienceAudio.volume = 0.22;
+let ambiencePlaceId = null;
+// renderPlace()가 매번 호출한다 — playBlinkTransition의 swapContent 안에서 실행되므로
+// 화면이 완전히 암전된 순간(HOLD)에 트랙이 바뀌어 전환이 귀에 거슬리지 않는다.
+function playAmbienceForPlace(placeId) {
+  if (placeId === ambiencePlaceId) return;
+  const src = AMBIENCE_FILES[placeId];
+  if (!src) return;
+  ambiencePlaceId = placeId;
+  ambienceAudio.src = src;
+  ambienceAudio.play().catch(() => {});
+}
+
+const introMusic = new Audio("audio/music/music_intro.mp3");
+introMusic.loop = true;
+introMusic.volume = 0.35;
+introMusic.play().catch(() => {}); // 인트로 시작과 동시에 시도 — 자동재생 정책에 막히면 아래에서 재시도
+
+// 01_톤_방향.md "잽스케어성 급격한 볼륨 변화 금지" — 인트로 종료 시 뚝 끊지 않고
+// 짧게 페이드아웃한다.
+function fadeOutAndPause(audio, durationMs) {
+  const startVolume = audio.volume;
+  const steps = 10;
+  let i = 0;
+  const timer = setInterval(() => {
+    i++;
+    audio.volume = Math.max(0, startVolume * (1 - i / steps));
+    if (i >= steps) {
+      clearInterval(timer);
+      audio.pause();
+      audio.volume = startVolume; // 다음 재생을 위해 원래 볼륨으로 복원
+    }
+  }, durationMs / steps);
+}
+function stopIntroMusic() {
+  fadeOutAndPause(introMusic, 500);
+}
+
+// 브라우저 자동재생 정책상 사용자가 페이지와 한 번도 상호작용하기 전엔 소리가 막힐 수
+// 있다 — 첫 클릭/터치에서 인트로 음악(과 이미 재생 시도된 앙비언스)을 한 번 더 시도한다.
+function unlockAudioOnFirstInteraction() {
+  introMusic.play().catch(() => {});
+  if (ambiencePlaceId) ambienceAudio.play().catch(() => {});
+  document.removeEventListener("pointerdown", unlockAudioOnFirstInteraction);
+}
+document.addEventListener("pointerdown", unlockAudioOnFirstInteraction);
+
 // 장소 전환 블링크 타이밍(ms). 눈이 감겼다 뜨는 리듬을 흉내낸 것 — 감을 때는
 // 짧고 급하게(ease-in), 뜰 때는 그보다 살짝 느긋하게(ease-out) 움직인다.
 // 완전히 닫힌 상태(HOLD)일 때 실제 장소/View 내용을 교체해서 전환이 안 보이게 한다.
@@ -603,6 +687,7 @@ function buildPlaceSwitcher() {
 // 완전히 덮인 순간 swapContent()로 실제 내용을 바꾼 뒤 다시 0->전체 크기로 넓혀서 연다.
 function playBlinkTransition(swapContent) {
   isBlinking = true;
+  playSfx("transition");
   placeTransition.classList.remove("opening");
   placeTransition.classList.add("closed"); // 130ms ease-in으로 닫힘
 
@@ -621,6 +706,7 @@ function playBlinkTransition(swapContent) {
 
 function renderPlace(placeId) {
   currentPlaceId = placeId;
+  playAmbienceForPlace(placeId);
   document.querySelectorAll("#place-switcher button").forEach((btn) =>
     btn.classList.toggle("active", btn.dataset.place === placeId)
   );
@@ -742,8 +828,10 @@ const WRONG_REACTION = "그것은 내가 부른 이름이 아니다.";
 
 // 정답 판정(직접 클릭이든 "정답 보기"든) 공통 처리. dotEl은 글로우/스포트라이트 위치용 —
 // "정답 보기"로 부를 땐 실제 클릭 지점이 없으므로 makeTransientDot()의 centroid 기본값
-// (화면 중앙, 50%/50%)으로 대체된다.
-function solveCurrentRiddle(dotEl) {
+// (화면 중앙, 50%/50%)으로 대체된다. viaReveal이 true면(정답 보기 경로) 스스로 찾았을 때와
+// 소리를 구분한다(SFX/05_정답보기버튼.md — 같은 "금색" 계열이지만 더 옅고 덜 만족스럽게).
+function solveCurrentRiddle(dotEl, viaReveal) {
+  playSfx(viaReveal ? "reveal" : "correct");
   solved = true;
   solvedObjects.add(currentAnswerObject); // 도감 기록 — "정답 보기"로 확인해도 스스로 찾은 것과 동일하게 기록
   saveGame();
@@ -778,6 +866,7 @@ function handleClick(hotspot, dotEl) {
   // 길찾기라서, 오답 클릭만으로도 무료로·자동으로 알려준다. 정답 사물이 이 View
   // 안에 있는데 다른 걸 클릭했을 때만(Case A) 짧은 반응 한 줄로 그친다.
   shakeScene();
+  playSfx("wrong");
   const candidates = candidateScenesFor(currentAnswerObject);
   if (candidates.includes(currentSceneId)) {
     appendOrEmphasizeLog(WRONG_REACTION, "hint");
@@ -805,11 +894,12 @@ function handleObjectHintButtonClick() {
 
   if (hintStackRemaining <= 0) {
     // "정답 보기" — 실제 클릭 지점이 없으니 centroid 기본값(화면 중앙)에 글로우를 띄운다.
-    solveCurrentRiddle(makeTransientDot(DEMO_SCENES[currentSceneId], currentAnswerObject));
+    solveCurrentRiddle(makeTransientDot(DEMO_SCENES[currentSceneId], currentAnswerObject), true);
     return;
   }
 
   hintStackRemaining--;
+  playSfx("hint");
   if (candidateScenesFor(currentAnswerObject).includes(currentSceneId)) {
     // Hint_Level을 "Case A로 눌린 횟수" 순서대로 공개한다.
     appendLog(currentHints[hintPressCount], "hint");
@@ -831,6 +921,7 @@ const LOCATION_HERE_MESSAGE = "그것은 여기 있다.";
 function handleLocationHintButtonClick() {
   if (solved || isBlinking) return;
 
+  playSfx("hint");
   const candidates = candidateScenesFor(currentAnswerObject);
   if (candidates.includes(currentSceneId)) {
     appendOrEmphasizeLog(LOCATION_HERE_MESSAGE, "guide");
@@ -883,6 +974,7 @@ sceneFrame.addEventListener("click", (e) => {
     // 검정(빈 공간) 클릭이면 아래 리플 처리로 그대로 넘어간다.
   }
 
+  playSfx("empty");
   const rect = sceneFrame.getBoundingClientRect();
   const ripple = document.createElement("div");
   ripple.className = "ripple";
@@ -1038,6 +1130,7 @@ function showStartChoice() {
 }
 
 function exitIntro() {
+  stopIntroMusic();
   introOverlay.classList.remove("ready");
   introOverlay.classList.add("exit");
 }

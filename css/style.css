@@ -579,48 +579,31 @@ html, body {
   opacity: 0.6;
 }
 
-/* ---------- 모바일 세로: 하단 슬라이드 패널 ---------- */
-
-#panel-toggle {
-  display: none;
-}
-
+/* ---------- 모바일 세로: 세로 전용 스택 레이아웃 ---------- */
+/* 예전엔 가로 레이아웃(좌 정보패널/우 시점)을 그대로 세로로 욱여넣고, 화면 아래에
+   숨겨뒀다가 탭해야 올라오는 슬라이드 패널로 때웠다. 그런데 #scene-view가 남는 세로
+   공간 전체를 차지한 채 안의 내용(전환 버튼 + 16:9 프레임)을 가운데 정렬해버려서,
+   프레임 위아래로 아무것도 없는 빈 공간만 크게 남았다 — 안 그래도 좁은 화면에서
+   위쪽 공간이 통째로 버려지는 셈. "세로를 가로의 대체재"가 아니라 세로 자체를 위한
+   레이아웃으로 다시 짠다: 시점은 내용 높이만큼만(위쪽 정렬로) 차지하고, 그 아래
+   남는 공간 전부를 정보 패널(신의 말/힌트 버튼/로그)이 이어서 채운다 — 항상 보이는
+   상태라 더 이상 열고 닫는 토글이 필요 없다. */
 @media (orientation: portrait) {
   #app { flex-direction: column; }
 
-  #scene-view { order: 1; flex: 1; padding: 1rem; }
+  #scene-view {
+    order: 1;
+    flex: 0 0 auto; /* 내용물 높이만큼만 — 남는 세로 공간을 정보 패널에 넘긴다 */
+    justify-content: flex-start;
+    padding: 1rem 1rem 0.75rem;
+  }
 
   #info-panel {
     order: 2;
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
+    flex: 1; /* 시점이 쓰고 남은 세로 공간을 전부 차지 */
+    min-height: 0; /* flex 자식 안에서 overflow-y: auto가 실제로 스크롤되려면 필요 */
     width: 100%;
-    height: 45vh;
-    transform: translateY(calc(100% - 44px));
-    transition: transform 0.3s ease;
     border-right: none;
     border-top: 1px solid rgba(216, 185, 120, 0.15);
-    z-index: 10;
   }
-
-  #info-panel.open { transform: translateY(0); }
-
-  #panel-toggle {
-    display: block;
-    position: fixed;
-    bottom: 45vh;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 11;
-    background: var(--panel-bg);
-    color: var(--accent);
-    border: 1px solid rgba(216, 185, 120, 0.3);
-    border-bottom: none;
-    border-radius: 8px 8px 0 0;
-    padding: 0.5rem 1.5rem;
-    font-family: inherit;
-    transition: bottom 0.3s ease;
-  }
-
-  #info-panel:not(.open) ~ #panel-toggle { bottom: 44px; }
 }

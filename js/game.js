@@ -494,8 +494,6 @@ const sceneFrame = document.getElementById("scene-frame");
 const sceneBg = document.getElementById("scene-bg");
 const dimOverlay = document.getElementById("dim-overlay");
 const logEl = document.getElementById("log");
-const infoPanel = document.getElementById("info-panel");
-const panelToggle = document.getElementById("panel-toggle");
 const placeSwitcher = document.getElementById("place-switcher");
 const sceneSwitcher = document.getElementById("scene-switcher");
 const continuePrompt = document.getElementById("continue-prompt");
@@ -520,6 +518,12 @@ const SFX_FILES = {
   hint: "audio/sfx/sfx_hint_button.wav",
   reveal: "audio/sfx/sfx_reveal_answer.wav",
   transition: "audio/sfx/sfx_place_transition.wav",
+  // 카탈로그상 "작은 엔딩(부분 완주)"/"완전한 엔딩" 이름 그대로 매칭 — 장소 하나를
+  // 완전히 마쳤을 때 뜨는 엔딩 대사가 곧 이 게임의 "작은 엔딩"이라(별도의 "장소 매듭"
+  // 이벤트를 더 두지 않기로 함, docs/04_진행시스템.md "17. 최종 보상" 참고),
+  // sfx_place_complete.wav는 아직 대응되는 이벤트가 없어 미연결로 남겨둔다.
+  endingSmall: "audio/sfx/sfx_ending_partial.mp3",
+  endingFull: "audio/sfx/sfx_ending_full.mp3",
 };
 const SFX_VOLUME = 0.6;
 function playSfx(name) {
@@ -613,11 +617,31 @@ let isBlinking = false;
 // 저장/불러오기 — 지금은 진명 기록(도감)의 뼈대인 solvedObjects(맞춘 사물명 집합)만
 // localStorage에 저장한다. 진행 중이던 진명 자체(currentAnswerObject, hintStep 등)나
 // 파도 사이클 위치는 저장하지 않고 새 세션마다 처음부터 다시 돈다 — "지금까지 모은
-// 것이 안 사라진다"는 핵심만 우선 구현. 나머지 저장 값(solveMethod, locationsCleared,
-// endingsUnlocked, hintStack 등)은 그 시스템들 자체가 아직 없어서 다음 확장 대상이다
-// (docs/04_진행시스템.md 참고).
+// 것이 안 사라진다"는 핵심만 우선 구현. solveMethod(스스로 찾음/정답 보기 구분)는 아직
+// 그 표시 자체(도감에서 다르게 보여줄지)가 정해지지 않아 다음 확장 대상으로 남겨둔다
+// (docs/04_진행시스템.md "미정 사항" 참고).
 const SAVE_KEY = "sinuieoneo:save:v1";
 let solvedObjects = new Set();
+
+// 여러 엔딩(docs/04_진행시스템.md "17. 최종 보상") — locationsCleared/fullEndingShown은
+// 둘 다 solvedObjects의 순수한 파생 상태라(그 장소 사물이 전부 solvedObjects에 있는지,
+// 80개가 다 있는지) 따로 저장하지 않는다. startGame()이 시작 시점에 한 번 계산해서
+// "이어서 하기로 이미 다 끝나 있던 것들"은 미리 채워두고, 그 이후 새로 채워지는 것만
+// handleContinueClick()에서 엔딩 연출을 띄운다.
+let locationsCleared = new Set();
+let fullEndingShown = false;
+function placeObjectNames(placeId) {
+  const names = new Set();
+  Object.keys(DEMO_SCENES).forEach((id) => {
+    if (DEMO_SCENES[id].place !== placeId) return;
+    DEMO_SCENES[id].hotspots.forEach((h) => names.add(h.name));
+  });
+  return [...names];
+}
+function isPlaceFullyCleared(placeId) {
+  const names = placeObjectNames(placeId);
+  return names.length > 0 && names.every((n) => solvedObjects.has(n));
+}
 
 function loadSave() {
   try {
@@ -936,6 +960,26 @@ function showContinuePrompt() {
   dimOverlay.addEventListener("click", handleContinueClick, { once: true });
 }
 
+// docs/04_진행시스템.md "엔딩 대사" 초안 그대로 — [보상]/[X]/[Y]/[Z] 자리는
+// js/rewards.js의 후보 목록에서 매번 무작위로 채운다.
+function buildSmallEndingLines(placeLabel) {
+  return [
+    `너는 ${placeLabel}에 깃든 모든 진명을 알아냈다.`,
+    "증명할 수 없어도 괜찮다. 나는 보았다.",
+    `너에게 하나를 건넨다: ${pickReward(REWARD_POOL)}.`,
+    "아직 끝나지 않았다. 다른 곳에도, 너를 기다리는 이름들이 있다.",
+  ];
+}
+function buildFullEndingLines() {
+  return [
+    "여든 개의 진명을, 너는 전부 마주했다.",
+    "어떤 것은 금방 알아챘고, 어떤 것은 오래 헤맸을 것이다.",
+    "헤맨 시간이야말로 내가 바라던 것이었다.",
+    `행운의 색은 ${pickReward(REWARD_COLORS)}, 행운의 장소는 ${pickReward(REWARD_PLACES)}, 만날 사람은 ${pickReward(REWARD_PEOPLE)}.`,
+    "너는 오늘을 기억하지 못할 것이다. 그래도 무언가는 달라져 있을 것이다.",
+  ];
+}
+
 function handleContinueClick(e) {
   e.stopPropagation(); // sceneFrame의 빈 공간 클릭(리플) 리스너로 버블링되지 않게 막는다.
   dimOverlay.classList.remove("active", "awaiting-continue");
@@ -948,6 +992,27 @@ function handleContinueClick(e) {
   // hintPressCount/hintStackRemaining/힌트 버튼 라벨은 loadNextRiddle() 안에서 파도
   // 종류에 맞게 설정한다 — 새 진명이 시작되는 지점이므로 리셋도 거기서만 일어난다.
   logEl.innerHTML = ""; // 힌트/오답 로그도 새 진명 시작 시 초기화 — 계속 쌓이면 스크롤 압박이 생김.
+
+  // 방금 맞힌 사물이 "완전한 엔딩"(80개 전부) 또는 새로운 "작은 엔딩"(장소 하나 완료)을
+  // 열었는지 확인한다. 완전한 엔딩이 뜨는 순간엔 그 안에 포함된 모든 장소도 같이
+  // locationsCleared로 표시해서, 이후에 작은 엔딩이 중복으로 뜨지 않게 한다.
+  if (!fullEndingShown && solvedObjects.size >= Object.keys(TRUENAME_DATA).length) {
+    fullEndingShown = true;
+    Object.keys(DEMO_PLACES).forEach((id) => locationsCleared.add(id));
+    playSfx("endingFull");
+    playEndingSequence(buildFullEndingLines(), loadNextRiddle);
+    return;
+  }
+  const newlyClearedPlace = Object.keys(DEMO_PLACES).find(
+    (placeId) => !locationsCleared.has(placeId) && isPlaceFullyCleared(placeId)
+  );
+  if (newlyClearedPlace) {
+    locationsCleared.add(newlyClearedPlace);
+    playSfx("endingSmall");
+    playEndingSequence(buildSmallEndingLines(DEMO_PLACES[newlyClearedPlace].label), loadNextRiddle);
+    return;
+  }
+
   loadNextRiddle();
 }
 
@@ -985,11 +1050,6 @@ sceneFrame.addEventListener("click", (e) => {
 });
 
 buildPlaceSwitcher();
-
-panelToggle.addEventListener("click", () => {
-  const open = infoPanel.classList.toggle("open");
-  panelToggle.textContent = open ? "▼ 닫기" : "▲ 신의 말";
-});
 
 // 진명 기록(도감) — 사물을 게임 화면 안에서 직접 표시(외곽선/빛)하는 대신, 열고 닫는
 // 목록 패널로 범위를 좁혔다. 찾은 사물은 이름을, 아직 못 찾은 사물은 이름 글자 수만큼
@@ -1029,6 +1089,13 @@ locationHintButton.addEventListener("click", handleLocationHintButtonClick);
 // 시간은 충분해서, 미뤄도 로딩이 눈에 띄게 늦어 보이지는 않는다.
 async function startGame() {
   await contentReadyPromise; // 인트로 재생 중 백그라운드로 미리 불러와 둬서 보통은 즉시 통과한다
+  // "이어서 하기"로 불러온 solvedObjects 기준으로 이미 끝나 있던 장소/완주는 지금
+  // 조용히 표시만 해두고, 엔딩 연출은 앞으로 새로 채워지는 것에 대해서만 띄운다
+  // (handleContinueClick 참고) — 매번 다시 로그인할 때마다 과거 엔딩이 재생되면 안 된다.
+  Object.keys(DEMO_PLACES).forEach((id) => {
+    if (isPlaceFullyCleared(id)) locationsCleared.add(id);
+  });
+  fullEndingShown = solvedObjects.size >= Object.keys(TRUENAME_DATA).length;
   loadNextRiddle();
   renderPlace("library");
 }
@@ -1070,6 +1137,13 @@ function showNextIntroLine() {
 
 // 자동 대기 중 클릭하면 남은 대기를 취소하고 바로 다음 문장을 보여준다.
 introOverlay.addEventListener("click", () => {
+  if (endingActive && !endingFinished) {
+    // 엔딩 연출 중에는 인트로와 똑같이 클릭으로 대기를 건너뛴다 — 같은 #intro-overlay를
+    // 재사용하므로(아래 "엔딩" 절 참고) 이 리스너 하나가 인트로/엔딩 둘 다 처리한다.
+    clearTimeout(endingTimeoutId);
+    showNextEndingLine();
+    return;
+  }
   if (introFinished) return; // 마지막 문장 이후엔 showStartChoice()가 만든 버튼들이 각자 처리
   clearTimeout(introTimeoutId);
   showNextIntroLine();
@@ -1144,3 +1218,77 @@ introOverlay.addEventListener("transitionend", (e) => {
 });
 
 showNextIntroLine();
+
+// ---------- 엔딩: 작은 엔딩 / 완전한 엔딩 ----------
+// docs/04_진행시스템.md "엔딩 대사" — 인트로와 짝을 이루는 끝이라 실제로도 같은
+// #intro-overlay/#intro-lines를 재사용한다(인트로가 끝나면 display:none으로 숨어있을
+// 뿐 DOM에서 제거되지는 않으므로, 다시 열어서 새 대사로 채우기만 하면 된다). 인트로의
+// showNextIntroLine()과 거의 같은 모양이지만 대상 데이터(라인 배열)가 매번 달라서
+// 별도 상태로 분리했다.
+let endingLines = [];
+let endingIndex = 0;
+let endingTimeoutId = null;
+let endingFinished = false;
+let endingActive = false;
+let endingOnDone = null;
+
+function showNextEndingLine() {
+  if (endingIndex >= endingLines.length) {
+    if (!endingFinished) {
+      endingFinished = true;
+      showEndingContinueButton();
+    }
+    return;
+  }
+  const text = endingLines[endingIndex];
+  endingIndex++;
+  const p = document.createElement("p");
+  p.textContent = text;
+  introLinesEl.appendChild(p);
+  p.scrollIntoView({ behavior: "smooth", block: "end" });
+  endingTimeoutId = setTimeout(showNextEndingLine, readingDelay(text));
+}
+
+// showStartChoice()의 #start-choice 버튼과 같은 스타일을 그대로 재사용한다 — 인트로가
+// 끝난 뒤엔 그 div가 이미 introLinesEl.innerHTML 초기화로 사라져 있어 id가 겹치지 않는다.
+function showEndingContinueButton() {
+  const wrap = document.createElement("div");
+  wrap.id = "start-choice";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "( 계속하기 )";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    finishEndingSequence();
+  });
+  wrap.appendChild(btn);
+  introLinesEl.appendChild(wrap);
+  wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function finishEndingSequence() {
+  endingActive = false;
+  introOverlay.classList.remove("ready");
+  introOverlay.classList.add("exit"); // transitionend 리스너가 슬라이드 종료 후 다시 숨겨준다
+  const done = endingOnDone;
+  endingOnDone = null;
+  done();
+}
+
+// solveCurrentRiddle의 정답 연출(암전 + Revelation)이 다 끝나고 플레이어가 "클릭하여
+// 계속"을 누른 시점(handleContinueClick)에 호출된다 — 리들 하나를 다 확인한 뒤에
+// 엔딩이 끼어들어야 자연스럽기 때문. onDone은 엔딩 연출이 끝난 뒤 이어서 실행할
+// 콜백(보통 loadNextRiddle) — 엔딩 뒤에도 게임은 계속된다(80개를 다 채웠어도 데이터를
+// 다시 순환시켜 계속 플레이할 수 있다, docs/04_진행시스템.md "데일리 모드" 참고).
+function playEndingSequence(lines, onDone) {
+  introLinesEl.innerHTML = "";
+  endingLines = lines;
+  endingIndex = 0;
+  endingFinished = false;
+  endingActive = true;
+  endingOnDone = onDone;
+  introOverlay.classList.remove("exit");
+  introOverlay.style.display = "";
+  introOverlay.classList.add("ready");
+  showNextEndingLine();
+}

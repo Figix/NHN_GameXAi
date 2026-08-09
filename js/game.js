@@ -3,14 +3,17 @@
 // 이 파일에 하드코딩돼 있지 않다. 장소(큰 단위)/View(작은 단위) 용어는
 // docs/02_게임플레이_흐름.md 기준.
 
+// stage는 순전히 표시용 번호다(place-switcher 버튼 라벨, docs/02_게임플레이_흐름.md
+// "장소(Place) 목록" 참고) — 잠금/순서 강제는 없다. 자유 탐색 설계를 그대로 유지한 채,
+// 7곳 중 지금 몇 번째를 보고 있는지 방향 감각만 주기 위한 것.
 const DEMO_PLACES = {
-  library: { label: "도서관" },
-  station: { label: "기차역" },
-  museum: { label: "박물관" },
-  "post-office": { label: "우체국" },
-  market: { label: "시장" },
-  cafe: { label: "카페" },
-  park: { label: "공원" },
+  library: { label: "도서관", stage: 1 },
+  station: { label: "기차역", stage: 2 },
+  museum: { label: "박물관", stage: 3 },
+  "post-office": { label: "우체국", stage: 4 },
+  market: { label: "시장", stage: 5 },
+  cafe: { label: "카페", stage: 6 },
+  park: { label: "공원", stage: 7 },
 };
 
 // data/content.json의 places(장소 한글명 기준)를 fetch로 받아서 loadContent()가 채운다.
@@ -503,14 +506,16 @@ const codexOverlay = document.getElementById("codex-overlay");
 const codexClose = document.getElementById("codex-close");
 const codexList = document.getElementById("codex-list");
 const codexProgress = document.getElementById("codex-progress");
+const ambienceVolumeSlider = document.getElementById("ambience-volume-slider");
+const sfxVolumeSlider = document.getElementById("sfx-volume-slider");
 const objectHintButton = document.getElementById("object-hint-button");
 const locationHintButton = document.getElementById("location-hint-button");
 
 // ---------- 오디오 ----------
 // Audio/03_생성_프롬프트.md 스펙으로 생성한 파일들 — audio/sfx, audio/ambience, audio/music.
-// sfx_place_complete/sfx_ending_full/sfx_ending_partial은 그 상태(장소 매듭/엔딩 도달)를
-// 판정하는 게임 로직 자체가 아직 없어서(docs/TODO.md "게임 시스템 — 기획서엔 있지만
-// 미구현" 참고) 여기 연결하지 않는다 — audio/sfx/에 파일만 미리 둔다.
+// sfx_place_complete.wav만 대응하는 이벤트가 없어 미연결로 남아있다 — 이 게임에서
+// "장소 매듭"과 "작은 엔딩"이 같은 이벤트로 합쳐졌기 때문(docs/04_진행시스템.md
+// "엔딩 시스템 구현" 참고). 나머지는 전부 아래에서 연결한다.
 const SFX_FILES = {
   correct: "audio/sfx/sfx_correct_answer.wav",
   wrong: "audio/sfx/sfx_wrong_answer.wav",
@@ -518,14 +523,39 @@ const SFX_FILES = {
   hint: "audio/sfx/sfx_hint_button.wav",
   reveal: "audio/sfx/sfx_reveal_answer.wav",
   transition: "audio/sfx/sfx_place_transition.wav",
-  // 카탈로그상 "작은 엔딩(부분 완주)"/"완전한 엔딩" 이름 그대로 매칭 — 장소 하나를
-  // 완전히 마쳤을 때 뜨는 엔딩 대사가 곧 이 게임의 "작은 엔딩"이라(별도의 "장소 매듭"
-  // 이벤트를 더 두지 않기로 함, docs/04_진행시스템.md "17. 최종 보상" 참고),
-  // sfx_place_complete.wav는 아직 대응되는 이벤트가 없어 미연결로 남겨둔다.
   endingSmall: "audio/sfx/sfx_ending_partial.mp3",
   endingFull: "audio/sfx/sfx_ending_full.mp3",
 };
-const SFX_VOLUME = 0.6;
+
+// 볼륨 설정 — 햄버거(☰) 메뉴 안 슬라이더 2개(앰비언스/효과음)로 조절한다. 저장된
+// 값은 원래 튜닝해둔 각 사운드의 기준 볼륨(BASE_*)에 곱하는 배율(0~1)이라, 슬라이더를
+// 만지지 않으면 지금까지와 완전히 같은 소리로 들린다. 인트로 음악은 배경음 성격이라
+// "앰비언스" 쪽 배율을 같이 쓴다.
+const AUDIO_SETTINGS_KEY = "sinuieoneo:audio:v1";
+const BASE_SFX_VOLUME = 0.6;
+const BASE_AMBIENCE_VOLUME = 0.22;
+const BASE_INTRO_VOLUME = 0.35;
+function loadAudioSettings() {
+  try {
+    const raw = localStorage.getItem(AUDIO_SETTINGS_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    return {
+      ambience: typeof data?.ambience === "number" ? data.ambience : 1,
+      sfx: typeof data?.sfx === "number" ? data.sfx : 1,
+    };
+  } catch (err) {
+    return { ambience: 1, sfx: 1 };
+  }
+}
+const audioSettings = loadAudioSettings();
+function saveAudioSettings() {
+  try {
+    localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(audioSettings));
+  } catch (err) {
+    console.error("[audio] 소리 설정을 저장하지 못했습니다 — " + err.message);
+  }
+}
+
 function playSfx(name) {
   const src = SFX_FILES[name];
   if (!src) return;
@@ -533,7 +563,7 @@ function playSfx(name) {
   // 재시작 애니메이션이 아니라) 이전 재생과 겹쳐서 들리게 하기 위함. 브라우저가
   // 리소스는 캐싱하므로 매번 새로 받아오지 않는다.
   const audio = new Audio(src);
-  audio.volume = SFX_VOLUME;
+  audio.volume = BASE_SFX_VOLUME * audioSettings.sfx;
   audio.play().catch(() => {}); // 자동재생 차단 등은 조용히 무시 — 게임 플레이엔 지장 없어야 함
 }
 
@@ -549,7 +579,7 @@ const AMBIENCE_FILES = {
 };
 const ambienceAudio = new Audio();
 ambienceAudio.loop = true;
-ambienceAudio.volume = 0.22;
+ambienceAudio.volume = BASE_AMBIENCE_VOLUME * audioSettings.ambience;
 let ambiencePlaceId = null;
 // renderPlace()가 매번 호출한다 — playBlinkTransition의 swapContent 안에서 실행되므로
 // 화면이 완전히 암전된 순간(HOLD)에 트랙이 바뀌어 전환이 귀에 거슬리지 않는다.
@@ -564,8 +594,15 @@ function playAmbienceForPlace(placeId) {
 
 const introMusic = new Audio("audio/music/music_intro.mp3");
 introMusic.loop = true;
-introMusic.volume = 0.35;
+introMusic.volume = BASE_INTRO_VOLUME * audioSettings.ambience;
 introMusic.play().catch(() => {}); // 인트로 시작과 동시에 시도 — 자동재생 정책에 막히면 아래에서 재시도
+
+// 슬라이더를 움직일 때 실시간으로 반영 — 이미 재생 중인 앰비언스/인트로 음악의 볼륨만
+// 즉시 갱신하면 된다(SFX는 매번 새로 재생하는 원샷이라 다음 재생부터 자동 반영).
+function applyAmbienceVolume() {
+  ambienceAudio.volume = BASE_AMBIENCE_VOLUME * audioSettings.ambience;
+  if (!introMusic.paused) introMusic.volume = BASE_INTRO_VOLUME * audioSettings.ambience;
+}
 
 // 01_톤_방향.md "잽스케어성 급격한 볼륨 변화 금지" — 인트로 종료 시 뚝 끊지 않고
 // 짧게 페이드아웃한다.
@@ -613,6 +650,17 @@ let hintPressCount = 0;
 let hintStackRemaining = 3;
 let solved = false;
 let isBlinking = false;
+
+// 엔딩 대사의 힌트 사용 피드백용 카운터(docs/04_진행시스템.md "엔딩 시스템 구현" 참고).
+// 사물 힌트 버튼을 실제로 눌러 스택을 소모한 횟수만 센다(장소 힌트는 무료라 안 셈).
+// hintPressesSinceLastEnding은 작은 엔딩이 뜰 때마다(그 직후) 0으로 리셋해서 "이번
+// 구간 동안" 몇 번 빌렸는지를, totalHintPresses는 평생 누적으로 완전한 엔딩에서 쓴다.
+let hintPressesSinceLastEnding = 0;
+let totalHintPresses = 0;
+function recordHintPress() {
+  hintPressesSinceLastEnding++;
+  totalHintPresses++;
+}
 
 // 저장/불러오기 — 지금은 진명 기록(도감)의 뼈대인 solvedObjects(맞춘 사물명 집합)만
 // localStorage에 저장한다. 진행 중이던 진명 자체(currentAnswerObject, hintStep 등)나
@@ -696,7 +744,7 @@ function appendOrEmphasizeLog(text, className) {
 function buildPlaceSwitcher() {
   Object.keys(DEMO_PLACES).forEach((placeId) => {
     const btn = document.createElement("button");
-    btn.textContent = DEMO_PLACES[placeId].label;
+    btn.textContent = `STAGE ${DEMO_PLACES[placeId].stage} · ${DEMO_PLACES[placeId].label}`;
     btn.dataset.place = placeId;
     btn.addEventListener("click", () => {
       // 정답 연출(암전) 확인 전이거나, 블링크 재생 중이거나, 이미 그 장소면 무시.
@@ -917,12 +965,15 @@ function handleObjectHintButtonClick() {
   if (solved || isBlinking) return;
 
   if (hintStackRemaining <= 0) {
-    // "정답 보기" — 실제 클릭 지점이 없으니 centroid 기본값(화면 중앙)에 글로우를 띄운다.
+    // "정답 보기" — 힌트를 다 쓰고도 포기했다는 뜻이라 이것도 하나로 센다.
+    recordHintPress();
+    // 실제 클릭 지점이 없으니 centroid 기본값(화면 중앙)에 글로우를 띄운다.
     solveCurrentRiddle(makeTransientDot(DEMO_SCENES[currentSceneId], currentAnswerObject), true);
     return;
   }
 
   hintStackRemaining--;
+  recordHintPress();
   playSfx("hint");
   if (candidateScenesFor(currentAnswerObject).includes(currentSceneId)) {
     // Hint_Level을 "Case A로 눌린 횟수" 순서대로 공개한다.
@@ -960,21 +1011,41 @@ function showContinuePrompt() {
   dimOverlay.addEventListener("click", handleContinueClick, { once: true });
 }
 
+// 힌트를 몇 번 빌렸는지에 따라 반응이 달라지는 한 줄 — 작은/완전한 엔딩이 공유한다.
+// hintCount 0이면 최고 등급, objectCount 대비 비율이 낮을수록 좋은 평, 높을수록
+// "아직 멀었다" 쪽으로 기운다. 그래도 신은 질책하지 않는다는 톤 원칙(01_톤_방향.md)을
+// 지켜서, 가장 낮은 등급도 격려로 끝맺는다.
+function buildHintFeedbackLine(hintCount, objectCount) {
+  if (hintCount === 0) {
+    return "힌트를 하나도 빌리지 않았다. 오롯이 네 힘으로 여기까지 왔다.";
+  }
+  const ratio = objectCount > 0 ? hintCount / objectCount : hintCount;
+  if (ratio <= 0.4) {
+    return `힌트를 ${hintCount}번 빌렸을 뿐, 나머지는 스스로 알아냈다. 제법이구나.`;
+  }
+  if (ratio <= 1.2) {
+    return `힌트를 ${hintCount}번 빌렸다. 헤매는 것도 나쁘지 않다.`;
+  }
+  return `힌트를 ${hintCount}번이나 빌렸구나. 아직 멀었다 — 그래도 서두를 것 없다.`;
+}
+
 // docs/04_진행시스템.md "엔딩 대사" 초안 그대로 — [보상]/[X]/[Y]/[Z] 자리는
 // js/rewards.js의 후보 목록에서 매번 무작위로 채운다.
-function buildSmallEndingLines(placeLabel) {
+function buildSmallEndingLines(placeLabel, hintCount, objectCount) {
   return [
     `너는 ${placeLabel}에 깃든 모든 진명을 알아냈다.`,
     "증명할 수 없어도 괜찮다. 나는 보았다.",
+    buildHintFeedbackLine(hintCount, objectCount),
     `너에게 하나를 건넨다: ${pickReward(REWARD_POOL)}.`,
     "아직 끝나지 않았다. 다른 곳에도, 너를 기다리는 이름들이 있다.",
   ];
 }
-function buildFullEndingLines() {
+function buildFullEndingLines(hintCount) {
   return [
     "여든 개의 진명을, 너는 전부 마주했다.",
     "어떤 것은 금방 알아챘고, 어떤 것은 오래 헤맸을 것이다.",
     "헤맨 시간이야말로 내가 바라던 것이었다.",
+    buildHintFeedbackLine(hintCount, Object.keys(TRUENAME_DATA).length),
     `행운의 색은 ${pickReward(REWARD_COLORS)}, 행운의 장소는 ${pickReward(REWARD_PLACES)}, 만날 사람은 ${pickReward(REWARD_PEOPLE)}.`,
     "너는 오늘을 기억하지 못할 것이다. 그래도 무언가는 달라져 있을 것이다.",
   ];
@@ -1000,7 +1071,8 @@ function handleContinueClick(e) {
     fullEndingShown = true;
     Object.keys(DEMO_PLACES).forEach((id) => locationsCleared.add(id));
     playSfx("endingFull");
-    playEndingSequence(buildFullEndingLines(), loadNextRiddle);
+    playEndingSequence(buildFullEndingLines(totalHintPresses), loadNextRiddle);
+    hintPressesSinceLastEnding = 0;
     return;
   }
   const newlyClearedPlace = Object.keys(DEMO_PLACES).find(
@@ -1009,7 +1081,12 @@ function handleContinueClick(e) {
   if (newlyClearedPlace) {
     locationsCleared.add(newlyClearedPlace);
     playSfx("endingSmall");
-    playEndingSequence(buildSmallEndingLines(DEMO_PLACES[newlyClearedPlace].label), loadNextRiddle);
+    const objectCount = placeObjectNames(newlyClearedPlace).length;
+    playEndingSequence(
+      buildSmallEndingLines(DEMO_PLACES[newlyClearedPlace].label, hintPressesSinceLastEnding, objectCount),
+      loadNextRiddle
+    );
+    hintPressesSinceLastEnding = 0;
     return;
   }
 
@@ -1077,6 +1154,20 @@ codexClose.addEventListener("click", () => codexOverlay.classList.remove("open")
 // #codex-panel이 이벤트 타깃이 되므로 target === codexOverlay 체크만으로 충분하다.
 codexOverlay.addEventListener("click", (e) => {
   if (e.target === codexOverlay) codexOverlay.classList.remove("open");
+});
+
+// 소리 설정 슬라이더 — 저장된(또는 기본값 100%) 배율을 그대로 반영해서 시작하고,
+// 움직일 때마다 즉시 반영 + localStorage에 저장한다.
+ambienceVolumeSlider.value = String(Math.round(audioSettings.ambience * 100));
+sfxVolumeSlider.value = String(Math.round(audioSettings.sfx * 100));
+ambienceVolumeSlider.addEventListener("input", () => {
+  audioSettings.ambience = Number(ambienceVolumeSlider.value) / 100;
+  applyAmbienceVolume();
+  saveAudioSettings();
+});
+sfxVolumeSlider.addEventListener("input", () => {
+  audioSettings.sfx = Number(sfxVolumeSlider.value) / 100;
+  saveAudioSettings();
 });
 
 objectHintButton.addEventListener("click", handleObjectHintButtonClick);

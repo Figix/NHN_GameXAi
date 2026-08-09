@@ -556,6 +556,34 @@ html, body {
   color: var(--ink);
 }
 
+/* 햄버거 메뉴 안 소리 설정 — 앰비언스/효과음 배율을 따로 조절한다(js/game.js
+   audioSettings 참고). 목록(#codex-list)과는 구분선으로 분리. */
+#sound-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sound-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.sound-row span {
+  width: 4.5rem;
+  flex-shrink: 0;
+}
+
+.sound-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
 #codex-list {
   overflow-y: auto;
   display: grid;

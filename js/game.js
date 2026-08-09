@@ -509,6 +509,7 @@ const placeSwitcher = document.getElementById("place-switcher");
 const sceneSwitcher = document.getElementById("scene-switcher");
 const continuePrompt = document.getElementById("continue-prompt");
 const placeTransition = document.getElementById("place-transition");
+const fullscreenToggle = document.getElementById("fullscreen-toggle");
 const codexToggle = document.getElementById("codex-toggle");
 const codexOverlay = document.getElementById("codex-overlay");
 const codexClose = document.getElementById("codex-close");
@@ -1178,6 +1179,41 @@ function renderCodex() {
   codexProgress.textContent = `${solvedObjects.size} / ${names.length}`;
 }
 
+// 전체화면 버튼 — 모바일 가로 모드에서도 남는 주소줄을 자동으로 없앨 방법이 없어서(브라우저
+// 보안 정책상 페이지가 임의로 못 없앰) 사용자가 직접 누르는 방식으로 대신한다. iPhone
+// Safari는 일반 요소의 Fullscreen API를 지원하지 않으므로 그런 환경에서는 버튼 자체를
+// 숨긴다 — 눌러도 안 되는 버튼을 보여주는 것보다 없는 게 낫다.
+const FULLSCREEN_SUPPORTED = !!(
+  document.fullscreenEnabled || document.webkitFullscreenEnabled
+);
+if (FULLSCREEN_SUPPORTED) fullscreenToggle.classList.add("supported");
+
+function isFullscreenActive() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function updateFullscreenToggle() {
+  fullscreenToggle.classList.toggle("active", isFullscreenActive());
+  fullscreenToggle.setAttribute(
+    "aria-label",
+    isFullscreenActive() ? "전체화면 해제" : "전체화면"
+  );
+}
+
+fullscreenToggle.addEventListener("click", () => {
+  if (!isFullscreenActive()) {
+    const request =
+      document.documentElement.requestFullscreen ||
+      document.documentElement.webkitRequestFullscreen;
+    request && request.call(document.documentElement);
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    exit && exit.call(document);
+  }
+});
+document.addEventListener("fullscreenchange", updateFullscreenToggle);
+document.addEventListener("webkitfullscreenchange", updateFullscreenToggle);
+
 codexToggle.addEventListener("click", () => {
   renderCodex();
   codexOverlay.classList.add("open");
@@ -1349,6 +1385,7 @@ introOverlay.addEventListener("transitionend", (e) => {
     introOverlay.style.display = "none";
     sceneView.classList.add("revealed");
     codexToggle.classList.add("revealed");
+    fullscreenToggle.classList.add("revealed");
   }
 });
 

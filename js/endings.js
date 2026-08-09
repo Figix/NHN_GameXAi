@@ -12,6 +12,7 @@ const SMALL_ENDING_LINES = (placeLabel, hintFeedbackLine, reward) => [
   hintFeedbackLine,
   `너에게 하나를 건넨다: ${reward}.`,
   "아직 끝나지 않았다. 다른 곳에도, 너를 기다리는 이름들이 있다.",
+  "네가 했던 일들은 다 기억 중이니, 잠시 쉬었다가 와도 좋다.",
 ];
 
 // 완전한 엔딩 — 80개(=7개 STAGE) 전부를 마쳤을 때. color/place/person은

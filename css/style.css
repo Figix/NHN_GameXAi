@@ -627,13 +627,30 @@ html, body {
    남는 공간 전부를 정보 패널(신의 말/힌트 버튼/로그)이 이어서 채운다 — 항상 보이는
    상태라 더 이상 열고 닫는 토글이 필요 없다. */
 @media (orientation: portrait) {
-  #app { flex-direction: column; }
+  #app {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
 
+  /* #scene-view 자체는 박스로 그리지 않고 자식(place-switcher/scene-switcher/scene-frame)을
+     #app의 직접 flex 자식으로 풀어서, 그 사이에 info-panel을 order로 끼워 넣는다 — "STAGE
+     버튼 -> 신의 말/힌트/로그 -> 배경 뷰" 순서로 보여달라는 요청(2026-08-10)에 따른 구조.
+     display:contents는 자기 자신의 박스(패딩/gap 포함)를 없애므로, 아래에서 각 자식에
+     개별적으로 여백을 다시 지정한다. */
   #scene-view {
+    display: contents;
+  }
+
+  #place-switcher {
     order: 1;
-    flex: 0 0 auto; /* 내용물 높이만큼만 — 남는 세로 공간을 정보 패널에 넘긴다 */
-    justify-content: flex-start;
-    padding: 1rem 1rem 0.75rem;
+    padding: 1rem 1rem 0;
+  }
+
+  /* 세로 화면은 STAGE 버튼을 한 줄에 다 보여줄 공간이 부족하다 — 지금 활성화된(=잠기지
+     않은) STAGE 버튼만 보이고, 잠긴 나머지는 숨긴다. 완전한 엔딩 이후엔 모든 버튼에서
+     .locked가 빠지므로(updatePlaceSwitcherLocks) 이때는 다시 전부 보인다. */
+  #place-switcher button.locked {
+    display: none;
   }
 
   #info-panel {
@@ -643,5 +660,16 @@ html, body {
     width: 100%;
     border-right: none;
     border-top: 1px solid rgba(216, 185, 120, 0.15);
+  }
+
+  #scene-switcher {
+    order: 3;
+    padding: 0 1rem;
+  }
+
+  #scene-frame {
+    order: 4;
+    width: calc(100% - 2rem);
+    margin: 0 auto 0.75rem;
   }
 }

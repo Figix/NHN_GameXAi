@@ -1042,44 +1042,30 @@ function showContinuePrompt() {
   dimOverlay.addEventListener("click", handleContinueClick, { once: true });
 }
 
-// 힌트를 몇 번 빌렸는지에 따라 반응이 달라지는 한 줄 — 작은/완전한 엔딩이 공유한다.
-// hintCount 0이면 최고 등급, objectCount 대비 비율이 낮을수록 좋은 평, 높을수록
-// "아직 멀었다" 쪽으로 기운다. 그래도 신은 질책하지 않는다는 톤 원칙(01_톤_방향.md)을
-// 지켜서, 가장 낮은 등급도 격려로 끝맺는다.
+// 힌트를 몇 번 빌렸는지에 따라 어느 등급 문구를 쓸지 고른다 — 실제 문장은
+// js/endings.js의 HINT_FEEDBACK_*(작은/완전한 엔딩이 공유). hintCount 0이면 최고 등급,
+// objectCount 대비 비율이 낮을수록 좋은 평, 높을수록 "아직 멀었다" 쪽으로 기운다.
 function buildHintFeedbackLine(hintCount, objectCount) {
-  if (hintCount === 0) {
-    return "힌트를 하나도 빌리지 않았다. 오롯이 네 힘으로 여기까지 왔다.";
-  }
+  if (hintCount === 0) return HINT_FEEDBACK_NONE;
   const ratio = objectCount > 0 ? hintCount / objectCount : hintCount;
-  if (ratio <= 0.4) {
-    return `힌트를 ${hintCount}번 빌렸을 뿐, 나머지는 스스로 알아냈다. 제법이구나.`;
-  }
-  if (ratio <= 1.2) {
-    return `힌트를 ${hintCount}번 빌렸다. 헤매는 것도 나쁘지 않다.`;
-  }
-  return `힌트를 ${hintCount}번이나 빌렸구나. 아직 멀었다 — 그래도 서두를 것 없다.`;
+  if (ratio <= 0.4) return HINT_FEEDBACK_GOOD(hintCount);
+  if (ratio <= 1.2) return HINT_FEEDBACK_OK(hintCount);
+  return HINT_FEEDBACK_MUCH(hintCount);
 }
 
-// docs/04_진행시스템.md "엔딩 대사" 초안 그대로 — [보상]/[X]/[Y]/[Z] 자리는
-// js/rewards.js의 후보 목록에서 매번 무작위로 채운다.
+// 대사 원문은 js/endings.js(SMALL_ENDING_LINES/FULL_ENDING_LINES)에 있다 — 여기서는
+// [보상]/[X]/[Y]/[Z] 자리에 들어갈 값(js/rewards.js에서 무작위로 뽑음)과 힌트 피드백
+// 문구만 계산해서 넘긴다.
 function buildSmallEndingLines(placeLabel, hintCount, objectCount) {
-  return [
-    `너는 ${placeLabel}에 깃든 모든 진명을 알아냈다.`,
-    "증명할 수 없어도 괜찮다. 나는 보았다.",
-    buildHintFeedbackLine(hintCount, objectCount),
-    `너에게 하나를 건넨다: ${pickReward(REWARD_POOL)}.`,
-    "아직 끝나지 않았다. 다른 곳에도, 너를 기다리는 이름들이 있다.",
-  ];
+  return SMALL_ENDING_LINES(placeLabel, buildHintFeedbackLine(hintCount, objectCount), pickReward(REWARD_POOL));
 }
 function buildFullEndingLines(hintCount) {
-  return [
-    "여든 개의 진명을, 너는 전부 마주했다.",
-    "어떤 것은 금방 알아챘고, 어떤 것은 오래 헤맸을 것이다.",
-    "헤맨 시간이야말로 내가 바라던 것이었다.",
+  return FULL_ENDING_LINES(
     buildHintFeedbackLine(hintCount, Object.keys(TRUENAME_DATA).length),
-    `행운의 색은 ${pickReward(REWARD_COLORS)}, 행운의 장소는 ${pickReward(REWARD_PLACES)}, 만날 사람은 ${pickReward(REWARD_PEOPLE)}.`,
-    "너는 오늘을 기억하지 못할 것이다. 그래도 무언가는 달라져 있을 것이다.",
-  ];
+    pickReward(REWARD_COLORS),
+    pickReward(REWARD_PLACES),
+    pickReward(REWARD_PEOPLE)
+  );
 }
 
 function handleContinueClick(e) {

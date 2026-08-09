@@ -69,16 +69,28 @@ async function loadContent() {
 }
 const contentReadyPromise = loadContent();
 
-// 80개를 한 번씩 다 돌고 나서야 다시 섞는다(매번 순수 랜덤이면 방금 나온 게 바로 또
-// 나올 수 있음 — "80가지를 골고루 돈다"는 느낌을 위해 섞은 큐를 다 비울 때까지 유지).
+// STAGE 잠금 시스템(2026-08-09 확정, docs/02_게임플레이_흐름.md "STAGE 잠금" 참고) —
+// 큐는 더 이상 80개 전체가 아니라 "지금 잠금 해제된 STAGE(=currentPlaceId) 안의,
+// 아직 못 찾은 사물"만 담는다. 완전한 엔딩(80개 전부) 이후에는 모든 STAGE가 풀리므로
+// 그때만 예전처럼 80개 전체를 섞어 순환한다(자세한 내용은 아래 fullEndingShown 분기).
+function shuffled(array) {
+  const copy = array.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
 let riddleQueue = [];
 function ensureRiddleQueue() {
-  if (riddleQueue.length === 0) {
-    riddleQueue = Object.keys(TRUENAME_DATA);
-    for (let i = riddleQueue.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [riddleQueue[i], riddleQueue[j]] = [riddleQueue[j], riddleQueue[i]];
-    }
+  if (riddleQueue.length > 0) return;
+  if (fullEndingShown) {
+    riddleQueue = shuffled(Object.keys(TRUENAME_DATA));
+  } else {
+    // placeObjectNames()는 아래(솔브/저장 상태 근처)에서 정의되지만 호이스팅되므로
+    // 여기서 먼저 참조해도 문제없다. 이미 다른 STAGE에서 먼저 찾아둔 것(사물이 여러
+    // 장소에 걸쳐 있는 경우)은 제외한다.
+    riddleQueue = shuffled(placeObjectNames(currentPlaceId).filter((n) => !solvedObjects.has(n)));
   }
 }
 function nextObjectName() {
@@ -121,23 +133,19 @@ function findCoLocatedQueueIndex(previousAnswer) {
   return -1;
 }
 
-// 첫 진명(waveQuestionIndex === 0) 전용 사물 선정 — 장소 이동과 그 장소 안에서의 View
-// 이동을 둘 다 반드시 겪어야 찾아지는 사물을 골라서, 어느 세션에서든 튜토리얼 UX(장소
-// 이동 + 사물 가리키기)가 확실히 재생되게 한다. docs/03_판정_연출_시스템.md "첫 진명
+// 첫 진명(waveQuestionIndex === 0) 전용 사물 선정 — STAGE 잠금 시스템 도입 이후엔
+// 첫 STAGE(도서관) 밖으로 나갈 수 없으므로 장소 이동은 더 이상 가르칠 수 없다. 대신
+// 그 STAGE의 기본(첫) View가 아닌 다른 View로 옮겨야만 찾아지는 사물을 골라서, 적어도
+// "View 이동 + 사물 가리키기"는 항상 겪게 한다. docs/03_판정_연출_시스템.md "첫 진명
 // 튜토리얼" 참고.
 function defaultSceneIdForPlace(placeId) {
   return Object.keys(DEMO_SCENES).find((id) => DEMO_SCENES[id].place === placeId);
 }
 function qualifiesForTutorial(name) {
-  const scenes = candidateScenesFor(name);
+  const scenes = candidateScenesFor(name).filter((id) => DEMO_SCENES[id].place === currentPlaceId);
   if (scenes.length === 0) return false;
-  return scenes.every((id) => {
-    const place = DEMO_SCENES[id].place;
-    // library면 애초에 장소 이동이 필요 없고, 그 장소의 기본(첫) View면 장소만
-    // 옮겨도 바로 찾아져서 View 이동을 안 겪는다 — 둘 다 배제해야 "장소 이동 →
-    // View 이동 → 클릭" 3단계를 항상 지나가게 된다.
-    return place !== "library" && id !== defaultSceneIdForPlace(place);
-  });
+  const defaultScene = defaultSceneIdForPlace(currentPlaceId);
+  return scenes.every((id) => id !== defaultScene);
 }
 function findTutorialQueueIndex() {
   ensureRiddleQueue();
@@ -691,6 +699,17 @@ function isPlaceFullyCleared(placeId) {
   return names.length > 0 && names.every((n) => solvedObjects.has(n));
 }
 
+// STAGE 번호(DEMO_PLACES[id].stage) 오름차순으로 정렬한 장소 id 목록 — 잠금 순서와
+// "다음 STAGE" 계산에 쓴다.
+function orderedPlaceIds() {
+  return Object.keys(DEMO_PLACES).sort((a, b) => DEMO_PLACES[a].stage - DEMO_PLACES[b].stage);
+}
+function nextStagePlaceId(placeId) {
+  const ids = orderedPlaceIds();
+  const nextStage = DEMO_PLACES[placeId].stage + 1;
+  return ids.find((id) => DEMO_PLACES[id].stage === nextStage) || null;
+}
+
 function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -776,12 +795,24 @@ function playBlinkTransition(swapContent) {
   }, BLINK_CLOSE_MS);
 }
 
+// STAGE 잠금 — 완전한 엔딩(80개 전부) 전까지는 지금 STAGE만 눌리고 나머지는 disabled로
+// 막는다(클릭 이벤트 자체가 안 붙게). 완전한 엔딩 이후엔 전부 풀린다 — ensureRiddleQueue()도
+// 그때부터 80개 전체 순환으로 돌아간다. renderPlace()가 장소를 바꿀 때마다, 그리고
+// 완전한 엔딩이 뜨는 순간(handleContinueClick) 곧바로 다시 그려서 반영한다.
+function updatePlaceSwitcherLocks() {
+  document.querySelectorAll("#place-switcher button").forEach((btn) => {
+    const isCurrent = btn.dataset.place === currentPlaceId;
+    const unlocked = fullEndingShown || isCurrent;
+    btn.classList.toggle("active", isCurrent);
+    btn.classList.toggle("locked", !unlocked);
+    btn.disabled = !unlocked;
+  });
+}
+
 function renderPlace(placeId) {
   currentPlaceId = placeId;
   playAmbienceForPlace(placeId);
-  document.querySelectorAll("#place-switcher button").forEach((btn) =>
-    btn.classList.toggle("active", btn.dataset.place === placeId)
-  );
+  updatePlaceSwitcherLocks();
 
   // 이 장소 소속 View 버튼들을 새로 그린다 (View 목록은 장소마다 다르므로 매번 재생성).
   sceneSwitcher.innerHTML = "";
@@ -1070,6 +1101,7 @@ function handleContinueClick(e) {
   if (!fullEndingShown && solvedObjects.size >= Object.keys(TRUENAME_DATA).length) {
     fullEndingShown = true;
     Object.keys(DEMO_PLACES).forEach((id) => locationsCleared.add(id));
+    updatePlaceSwitcherLocks(); // 지금 바로 전 STAGE 버튼 잠금을 풀어준다
     playSfx("endingFull");
     playEndingSequence(buildFullEndingLines(totalHintPresses), loadNextRiddle);
     hintPressesSinceLastEnding = 0;
@@ -1082,9 +1114,24 @@ function handleContinueClick(e) {
     locationsCleared.add(newlyClearedPlace);
     playSfx("endingSmall");
     const objectCount = placeObjectNames(newlyClearedPlace).length;
+    // 작은 엔딩이 끝나면 곧바로 다음 STAGE로 넘어간다(요청: "작은 엔딩이 나올때마다
+    // 다음스테이지로 자동으로 가야함"). 다음 STAGE가 없으면(마지막 STAGE) 이 시점엔
+    // 이미 80개가 다 채워져 있어야 정상이라 위 완전한 엔딩 분기가 먼저 잡아낸다 —
+    // 그래도 데이터가 어긋나는 경우를 대비해 다음 STAGE가 없으면 제자리에서 계속한다.
+    const nextPlaceId = nextStagePlaceId(newlyClearedPlace);
     playEndingSequence(
       buildSmallEndingLines(DEMO_PLACES[newlyClearedPlace].label, hintPressesSinceLastEnding, objectCount),
-      loadNextRiddle
+      () => {
+        if (nextPlaceId) {
+          riddleQueue = [];
+          playBlinkTransition(() => {
+            renderPlace(nextPlaceId);
+            loadNextRiddle();
+          });
+        } else {
+          loadNextRiddle();
+        }
+      }
     );
     hintPressesSinceLastEnding = 0;
     return;
@@ -1187,8 +1234,19 @@ async function startGame() {
     if (isPlaceFullyCleared(id)) locationsCleared.add(id);
   });
   fullEndingShown = solvedObjects.size >= Object.keys(TRUENAME_DATA).length;
+
+  // STAGE 잠금 — "이어서 하기"는 아직 안 끝난 첫 STAGE부터 다시 시작한다(완전한
+  // 엔딩까지 봤으면 전부 풀려 있으니 아무 STAGE나 상관없어 그냥 도서관).
+  const resumePlaceId = fullEndingShown
+    ? "library"
+    : orderedPlaceIds().find((id) => !locationsCleared.has(id)) || "library";
+
+  // loadNextRiddle()의 큐가 currentPlaceId를 참조하므로(ensureRiddleQueue), renderPlace()의
+  // 화면 갱신보다 먼저 값만 정해둔다 — renderPlace()를 먼저 부르면 그 안의
+  // maybeShowTutorialGuidance()가 아직 정해지지 않은 currentAnswerObject를 보게 된다.
+  currentPlaceId = resumePlaceId;
   loadNextRiddle();
-  renderPlace("library");
+  renderPlace(resumePlaceId);
 }
 
 // ---------- 인트로: 신의 프롤로그 ----------

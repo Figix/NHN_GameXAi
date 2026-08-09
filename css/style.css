@@ -205,6 +205,16 @@ html, body {
   background: rgba(216, 185, 120, 0.12);
 }
 
+/* STAGE 잠금(2026-08-09) — 지금 STAGE 외엔 눌리지 않는다(disabled). 완전한 엔딩
+   이후엔 전부 풀려서 이 스타일이 안 붙는다. */
+#place-switcher button.locked {
+  opacity: 0.35;
+}
+
+#place-switcher button:disabled {
+  cursor: default;
+}
+
 #scene-frame {
   position: relative;
   width: 100%;

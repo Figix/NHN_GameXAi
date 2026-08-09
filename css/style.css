@@ -49,7 +49,8 @@ html, body {
 
 #app {
   display: flex;
-  height: 100vh;
+  height: 100vh; /* dvh 미지원 브라우저용 폴백 */
+  height: 100dvh; /* 모바일 주소줄이 뜨거나 접히거나 실제 보이는 높이에 맞춘다 */
   width: 100vw;
 }
 
@@ -522,7 +523,8 @@ html, body {
 
 #codex-panel {
   width: clamp(320px, 70vw, 720px);
-  max-height: 80vh;
+  max-height: 80vh; /* dvh 미지원 브라우저용 폴백 */
+  max-height: 80dvh;
   background: var(--panel-bg);
   border: 1px solid rgba(216, 185, 120, 0.25);
   border-radius: 8px;

@@ -509,7 +509,6 @@ const placeSwitcher = document.getElementById("place-switcher");
 const sceneSwitcher = document.getElementById("scene-switcher");
 const continuePrompt = document.getElementById("continue-prompt");
 const placeTransition = document.getElementById("place-transition");
-const fullscreenToggle = document.getElementById("fullscreen-toggle");
 const codexToggle = document.getElementById("codex-toggle");
 const codexOverlay = document.getElementById("codex-overlay");
 const codexClose = document.getElementById("codex-close");
@@ -764,7 +763,7 @@ function appendOrEmphasizeLog(text, className) {
 function buildPlaceSwitcher() {
   Object.keys(DEMO_PLACES).forEach((placeId) => {
     const btn = document.createElement("button");
-    btn.textContent = `STAGE ${DEMO_PLACES[placeId].stage} · ${DEMO_PLACES[placeId].label}`;
+    btn.textContent = `STAGE ${DEMO_PLACES[placeId].stage}`; // updatePlaceSwitcherLocks()가 곧바로 채운다
     btn.dataset.place = placeId;
     btn.addEventListener("click", () => {
       // 정답 연출(암전) 확인 전이거나, 블링크 재생 중이거나, 이미 그 장소면 무시.
@@ -800,6 +799,9 @@ function playBlinkTransition(swapContent) {
 // 막는다(클릭 이벤트 자체가 안 붙게). 완전한 엔딩 이후엔 전부 풀린다 — ensureRiddleQueue()도
 // 그때부터 80개 전체 순환으로 돌아간다. renderPlace()가 장소를 바꿀 때마다, 그리고
 // 완전한 엔딩이 뜨는 순간(handleContinueClick) 곧바로 다시 그려서 반영한다.
+// 잠긴 버튼은 장소 이름 없이 번호만 남겨서 가로 폭을 줄인다(PC에서도 7개가 나란히
+// 있으면 자리를 많이 차지한다는 피드백, 2026-08-10) — 어차피 눌러도 안 들어가는
+// 곳이라 이름까지 보여줄 필요가 없다.
 function updatePlaceSwitcherLocks() {
   document.querySelectorAll("#place-switcher button").forEach((btn) => {
     const isCurrent = btn.dataset.place === currentPlaceId;
@@ -807,6 +809,8 @@ function updatePlaceSwitcherLocks() {
     btn.classList.toggle("active", isCurrent);
     btn.classList.toggle("locked", !unlocked);
     btn.disabled = !unlocked;
+    const place = DEMO_PLACES[btn.dataset.place];
+    btn.textContent = unlocked ? `STAGE ${place.stage} · ${place.label}` : `STAGE ${place.stage}`;
   });
 }
 
@@ -1179,41 +1183,6 @@ function renderCodex() {
   codexProgress.textContent = `${solvedObjects.size} / ${names.length}`;
 }
 
-// 전체화면 버튼 — 모바일 가로 모드에서도 남는 주소줄을 자동으로 없앨 방법이 없어서(브라우저
-// 보안 정책상 페이지가 임의로 못 없앰) 사용자가 직접 누르는 방식으로 대신한다. iPhone
-// Safari는 일반 요소의 Fullscreen API를 지원하지 않으므로 그런 환경에서는 버튼 자체를
-// 숨긴다 — 눌러도 안 되는 버튼을 보여주는 것보다 없는 게 낫다.
-const FULLSCREEN_SUPPORTED = !!(
-  document.fullscreenEnabled || document.webkitFullscreenEnabled
-);
-if (FULLSCREEN_SUPPORTED) fullscreenToggle.classList.add("supported");
-
-function isFullscreenActive() {
-  return !!(document.fullscreenElement || document.webkitFullscreenElement);
-}
-
-function updateFullscreenToggle() {
-  fullscreenToggle.classList.toggle("active", isFullscreenActive());
-  fullscreenToggle.setAttribute(
-    "aria-label",
-    isFullscreenActive() ? "전체화면 해제" : "전체화면"
-  );
-}
-
-fullscreenToggle.addEventListener("click", () => {
-  if (!isFullscreenActive()) {
-    const request =
-      document.documentElement.requestFullscreen ||
-      document.documentElement.webkitRequestFullscreen;
-    request && request.call(document.documentElement);
-  } else {
-    const exit = document.exitFullscreen || document.webkitExitFullscreen;
-    exit && exit.call(document);
-  }
-});
-document.addEventListener("fullscreenchange", updateFullscreenToggle);
-document.addEventListener("webkitfullscreenchange", updateFullscreenToggle);
-
 codexToggle.addEventListener("click", () => {
   renderCodex();
   codexOverlay.classList.add("open");
@@ -1324,6 +1293,20 @@ introOverlay.addEventListener("click", () => {
 // 문구로 새 게임을 시작하고(반으로 나뉜 형태 자체는 유지 — 나중에 기록이 생기면 같은
 // 자리가 실제로 두 가지 의미로 갈라진다는 것을 시각적으로 미리 보여주는 셈), 기록이
 // 있으면 좌측은 새로 시작(기존 기록 삭제 전 확인), 우측은 그 기록을 불러와 이어간다.
+// 모바일 가로 모드에서도 남아있는 브라우저 주소줄을 페이지가 자동으로 없앨 방법은
+// 없어서(브라우저가 임의 개입을 막음), "게임 실행" 버튼을 누르는 진짜 사용자 클릭에
+// 얹어서 전체화면을 요청한다 — Fullscreen API는 사용자 제스처 안에서만 허용되므로
+// 이 타이밍이 유일한 기회다. iPhone Safari처럼 지원 자체가 없는 환경에서는
+// requestFullscreen이 아예 없어 조용히 아무 일도 안 하고 넘어간다.
+function requestFullscreenOnce() {
+  const request =
+    document.documentElement.requestFullscreen ||
+    document.documentElement.webkitRequestFullscreen;
+  if (!request) return;
+  const result = request.call(document.documentElement);
+  if (result && result.catch) result.catch(() => {}); // 거부돼도 게임 진행에는 지장 없다
+}
+
 function showStartChoice() {
   const save = loadSave();
   const hasSave = !!(save && save.solvedObjects.length > 0);
@@ -1348,6 +1331,7 @@ function showStartChoice() {
   // {once:true}를 안 쓴다 — 대신 실제로 진행이 확정된 순간(proceed) 두 리스너를 함께
   // 떼어내서 중복 클릭으로 startGame()이 두 번 불리는 일을 막는다.
   async function proceed(nextSolvedObjects, clearSave) {
+    requestFullscreenOnce(); // 실제 탭이 일어나는 이 시점에서만 트리거 가능(사용자 제스처 필요)
     newBtn.removeEventListener("click", onNewClick);
     continueBtn.removeEventListener("click", onContinueClick);
     if (clearSave) localStorage.removeItem(SAVE_KEY);
@@ -1385,7 +1369,6 @@ introOverlay.addEventListener("transitionend", (e) => {
     introOverlay.style.display = "none";
     sceneView.classList.add("revealed");
     codexToggle.classList.add("revealed");
-    fullscreenToggle.classList.add("revealed");
   }
 });
 
